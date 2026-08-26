@@ -1,0 +1,48 @@
+name: Fix relocation scheduler
+on:
+  push:
+    branches: [v1.2.0-rooms]
+    paths: [.github/workflows/fix-relocation-scheduler.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1.2.0-rooms
+          fetch-depth: 0
+      - name: Wire relocation scheduler into room timer
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          old='''function tickMatchTimer(){\n  if(roomModeConnected()){renderMatchTimer();return;}\n  if(!matchRunning)return;\n'''
+          new='''function tickMatchTimer(){\n  if(roomModeConnected()){\n    Promise.resolve(maybeHostAdvanceRelocation()).catch(err=>console.warn("Relocation scheduler failed",err));\n    renderMatchTimer();\n    return;\n  }\n  if(!matchRunning)return;\n'''
+          n=s.count(old)
+          if n!=1:
+              raise SystemExit(f'Expected one room timer hook, found {n}')
+          p.write_text(s.replace(old,new,1))
+          PY
+      - name: Validate inline JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text()
+          scripts=re.findall(r'<script>([\s\S]*?)</script>',s)
+          if not scripts: raise SystemExit('No inline script found')
+          Path('/tmp/index-inline.js').write_text('\n'.join(scripts))
+          PY
+          node --check /tmp/index-inline.js
+          git diff --check
+      - name: Commit fix and remove workflow
+        run: |
+          rm .github/workflows/fix-relocation-scheduler.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html .github/workflows/fix-relocation-scheduler.yml
+          git commit -m 'Fix forced relocation scheduler'
+          git push origin HEAD:v1.2.0-rooms
