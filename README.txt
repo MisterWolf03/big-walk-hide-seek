@@ -1,4 +1,4 @@
-BIG WALK HIDE + SEEK — PROTOTYPE 1.1.1
+BIG WALK HIDE + SEEK — PROTOTYPE 1.1.2
 
 HOW TO RUN
 1. Unzip the folder.
@@ -111,6 +111,14 @@ WHAT CHANGED IN 1.0.2
 - Added live-location integration with BigWalkLivePosition v0.2.0.
 - Connect from Map Tools to create a LIVE YOU marker that follows your player.
 - Live marker can be used as the active reference marker for questions.
+
+
+WHAT CHANGED IN 1.1.2
+---------------------
+- Moved Pan / inspect, Add marker, and Distance + bearing ruler out of the Map Tools panel.
+- Added a compact floating icon toolbar directly on the map.
+- Tool icons are a hand, diamond, and ruler with no visible text.
+- Active tool remains highlighted; tooltips and accessible labels are retained.
 
 
 WHAT CHANGED IN 1.1.1

@@ -1,3 +1,8 @@
+v1.1.2
+- Moved the three interaction tools out of the side panel into a compact floating map toolbar
+- Replaced visible tool text with hand, diamond, and ruler icons
+- Added active-state highlighting and accessible labels/tooltips
+
 v1.1.1
 - Added a landmark visibility toggle in Settings > Map display
 - Towers and landmarks can now be hidden or shown independently

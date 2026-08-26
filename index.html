@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Big Walk Hide + Seek — Prototype 1.1.1</title>
+<title>Big Walk Hide + Seek — Prototype 1.1.2</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#181d24; --panel2:#222934; --line:#303947;
@@ -55,6 +55,20 @@
     box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap;
     transform:translate(14px,14px)
   }
+  #mapToolDock{
+    position:absolute;top:14px;left:14px;z-index:9;display:flex;gap:7px;padding:6px;
+    background:rgba(17,21,27,.94);border:1px solid var(--line);border-radius:11px;
+    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)
+  }
+  .mapToolBtn{
+    width:42px;height:42px;min-width:42px;padding:0;display:grid;place-items:center;
+    border-radius:8px;background:#29323e;color:#eef3f8;border:1px solid #465362
+  }
+  .mapToolBtn:hover:not(:disabled){background:#34404e}
+  .mapToolBtn svg{width:21px;height:21px;display:block;stroke:currentColor;fill:none;
+    stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  .mapToolBtn.toolActive{outline:none;background:#4b3f19!important;border-color:var(--accent);color:#ffe58b}
+  .mapToolBtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
 
   #panel{
     position:absolute;top:14px;right:14px;width:390px;max-height:calc(100% - 28px);
@@ -164,6 +178,8 @@
     #tabs{overflow-x:auto}
     .tabBtn{padding:7px 9px}
     #topTimerSub{display:none}
+    #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
+    .mapToolBtn{width:40px;height:40px;min-width:40px}
     #panel{left:8px;right:8px;top:8px;width:auto;max-height:calc(100% - 16px)}
   }
 </style>
@@ -200,6 +216,24 @@
       <canvas id="mapCanvas"></canvas>
     </div>
     <div id="coordTip">Y —, X —</div>
+    <div id="mapToolDock" role="toolbar" aria-label="Map interaction tools">
+      <button id="panModeBtn" class="mapToolBtn toolActive" type="button" title="Pan / inspect" aria-label="Pan / inspect" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 11V6a2 2 0 0 1 4 0v4"/>
+          <path d="M12 10V5a2 2 0 0 1 4 0v6"/>
+          <path d="M16 11V7a2 2 0 0 1 4 0v6c0 5-3 8-8 8h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l3 2V8a2 2 0 0 1 4 0"/>
+        </svg>
+      </button>
+      <button id="placeModeBtn" class="mapToolBtn" type="button" title="Add marker" aria-label="Add marker" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 12 12 21 3 12Z"/></svg>
+      </button>
+      <button id="rulerModeBtn" class="mapToolBtn" type="button" title="Distance + bearing ruler" aria-label="Distance + bearing ruler" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="7" width="18" height="10" rx="2"/>
+          <path d="M7 7v4M11 7v2.5M15 7v4M19 7v2.5"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <div id="panel">
@@ -244,16 +278,6 @@
         </div>
         <div id="liveLocationMessage" class="miniStatus"></div>
         <p class="small">Requires BigWalkLivePosition v0.2.1 running in your modded game. The site reads only your local player position from 127.0.0.1. On the hosted site, your browser may ask for permission to access the loopback/local network.</p>
-      </section>
-
-      <section>
-        <h3>Interaction mode</h3>
-        <div class="row">
-          <button id="panModeBtn" class="toolActive">Pan / inspect</button>
-          <button id="placeModeBtn">Add marker</button>
-        </div>
-        <button id="rulerModeBtn" style="margin-top:8px">Distance + bearing ruler</button>
-        <p class="small">Placement mode adds a new marker. Ruler mode uses two clicks.</p>
       </section>
 
       <section>
@@ -552,6 +576,15 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.1.2 — Floating map tools</h4>
+        <ul>
+          <li>Moved Pan / inspect, Add marker, and Distance + bearing ruler out of the Map Tools panel.</li>
+          <li>Added a compact floating icon toolbar on the map using hand, diamond, and ruler icons.</li>
+          <li>The active interaction tool remains highlighted and each icon has an accessible tooltip/label.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
         <h4>v1.1.1 — Map display toggles</h4>
         <ul>
           <li>Added a dedicated landmark visibility toggle in Settings → Map display.</li>
@@ -673,7 +706,7 @@
 </div>
 
 <script>
-const APP_VERSION="1.1.1";
+const APP_VERSION="1.1.2";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -838,6 +871,9 @@ function setToolMode(mode){
   panModeBtn.classList.toggle("toolActive",mode==="pan");
   placeModeBtn.classList.toggle("toolActive",mode==="place");
   rulerModeBtn.classList.toggle("toolActive",mode==="ruler");
+  panModeBtn.setAttribute("aria-pressed",String(mode==="pan"));
+  placeModeBtn.setAttribute("aria-pressed",String(mode==="place"));
+  rulerModeBtn.setAttribute("aria-pressed",String(mode==="ruler"));
   stage.style.cursor=mode==="pan"?"grab":"crosshair";
 }
 
