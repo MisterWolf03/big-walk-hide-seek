@@ -1,0 +1,119 @@
+name: Apply v1.1.2 floating map tools
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-v1.1.2-floating-tools.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Apply v1.1.2 changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('index.html')
+          s=p.read_text()
+          repls=[]
+          repls.append(('Big Walk Hide + Seek — Prototype 1.1.1','Big Walk Hide + Seek — Prototype 1.1.2'))
+          repls.append(('const APP_VERSION="1.1.1";','const APP_VERSION="1.1.2";'))
+
+          css_anchor='''  #coordTip{\n    position:absolute;display:none;pointer-events:none;z-index:8;\n    background:rgba(9,12,16,.94);color:#fff;border:1px solid rgba(255,255,255,.22);\n    border-radius:7px;padding:5px 7px;font-size:12px;line-height:1.2;\n    box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap;\n    transform:translate(14px,14px)\n  }\n'''
+          css_new=css_anchor+'''  #mapToolDock{\n    position:absolute;top:14px;left:14px;z-index:9;display:flex;gap:7px;padding:6px;\n    background:rgba(17,21,27,.94);border:1px solid var(--line);border-radius:11px;\n    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)\n  }\n  .mapToolBtn{\n    width:42px;height:42px;min-width:42px;padding:0;display:grid;place-items:center;\n    border-radius:8px;background:#29323e;color:#eef3f8;border:1px solid #465362\n  }\n  .mapToolBtn:hover:not(:disabled){background:#34404e}\n  .mapToolBtn svg{width:21px;height:21px;display:block;stroke:currentColor;fill:none;\n    stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}\n  .mapToolBtn.toolActive{outline:none;background:#4b3f19!important;border-color:var(--accent);color:#ffe58b}\n  .mapToolBtn:focus-visible{outline:2px solid #fff;outline-offset:2px}\n'''
+          repls.append((css_anchor,css_new))
+
+          media_old='''    #topTimerSub{display:none}\n    #panel{left:8px;right:8px;top:8px;width:auto;max-height:calc(100% - 16px)}\n'''
+          media_new='''    #topTimerSub{display:none}\n    #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}\n    .mapToolBtn{width:40px;height:40px;min-width:40px}\n    #panel{left:8px;right:8px;top:8px;width:auto;max-height:calc(100% - 16px)}\n'''
+          repls.append((media_old,media_new))
+
+          map_anchor='''    <div id="coordTip">Y —, X —</div>\n  </div>\n'''
+          map_new='''    <div id="coordTip">Y —, X —</div>\n    <div id="mapToolDock" role="toolbar" aria-label="Map interaction tools">\n      <button id="panModeBtn" class="mapToolBtn toolActive" type="button" title="Pan / inspect" aria-label="Pan / inspect" aria-pressed="true">\n        <svg viewBox="0 0 24 24" aria-hidden="true">\n          <path d="M8 11V6a2 2 0 0 1 4 0v4"/>\n          <path d="M12 10V5a2 2 0 0 1 4 0v6"/>\n          <path d="M16 11V7a2 2 0 0 1 4 0v6c0 5-3 8-8 8h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l3 2V8a2 2 0 0 1 4 0"/>\n        </svg>\n      </button>\n      <button id="placeModeBtn" class="mapToolBtn" type="button" title="Add marker" aria-label="Add marker" aria-pressed="false">\n        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 12 12 21 3 12Z"/></svg>\n      </button>\n      <button id="rulerModeBtn" class="mapToolBtn" type="button" title="Distance + bearing ruler" aria-label="Distance + bearing ruler" aria-pressed="false">\n        <svg viewBox="0 0 24 24" aria-hidden="true">\n          <rect x="3" y="7" width="18" height="10" rx="2"/>\n          <path d="M7 7v4M11 7v2.5M15 7v4M19 7v2.5"/>\n        </svg>\n      </button>\n    </div>\n  </div>\n'''
+          repls.append((map_anchor,map_new))
+
+          interaction='''      <section>\n        <h3>Interaction mode</h3>\n        <div class="row">\n          <button id="panModeBtn" class="toolActive">Pan / inspect</button>\n          <button id="placeModeBtn">Add marker</button>\n        </div>\n        <button id="rulerModeBtn" style="margin-top:8px">Distance + bearing ruler</button>\n        <p class="small">Placement mode adds a new marker. Ruler mode uses two clicks.</p>\n      </section>\n\n'''
+          repls.append((interaction,''))
+
+          settool_old='''function setToolMode(mode){\n  toolMode=mode;\n  panModeBtn.classList.toggle("toolActive",mode==="pan");\n  placeModeBtn.classList.toggle("toolActive",mode==="place");\n  rulerModeBtn.classList.toggle("toolActive",mode==="ruler");\n  stage.style.cursor=mode==="pan"?"grab":"crosshair";\n}\n'''
+          settool_new='''function setToolMode(mode){\n  toolMode=mode;\n  panModeBtn.classList.toggle("toolActive",mode==="pan");\n  placeModeBtn.classList.toggle("toolActive",mode==="place");\n  rulerModeBtn.classList.toggle("toolActive",mode==="ruler");\n  panModeBtn.setAttribute("aria-pressed",String(mode==="pan"));\n  placeModeBtn.setAttribute("aria-pressed",String(mode==="place"));\n  rulerModeBtn.setAttribute("aria-pressed",String(mode==="ruler"));\n  stage.style.cursor=mode==="pan"?"grab":"crosshair";\n}\n'''
+          repls.append((settool_old,settool_new))
+
+          change_anchor='''      <div class="changeEntry">\n        <h4>v1.1.1 — Map display toggles</h4>'''
+          change_new='''      <div class="changeEntry">\n        <h4>v1.1.2 — Floating map tools</h4>\n        <ul>\n          <li>Moved Pan / inspect, Add marker, and Distance + bearing ruler out of the Map Tools panel.</li>\n          <li>Added a compact floating icon toolbar on the map using hand, diamond, and ruler icons.</li>\n          <li>The active interaction tool remains highlighted and each icon has an accessible tooltip/label.</li>\n        </ul>\n      </div>\n\n      <div class="changeEntry">\n        <h4>v1.1.1 — Map display toggles</h4>'''
+          repls.append((change_anchor,change_new))
+
+          for old,new in repls:
+              if old not in s:
+                  raise SystemExit(f'Missing expected index.html patch target: {old[:140]!r}')
+              s=s.replace(old,new,1)
+          p.write_text(s)
+
+          Path('version.json').write_text('{\n  "version": "1.1.2",\n  "released": "2026-08-25"\n}')
+
+          changelog=Path('CHANGELOG.txt')
+          changelog.write_text(
+              'v1.1.2\n'
+              '- Moved the three interaction tools out of the side panel into a compact floating map toolbar\n'
+              '- Replaced visible tool text with hand, diamond, and ruler icons\n'
+              '- Added active-state highlighting and accessible labels/tooltips\n\n'
+              + changelog.read_text()
+          )
+
+          readme=Path('README.txt')
+          r=readme.read_text()
+          if 'BIG WALK HIDE + SEEK — PROTOTYPE 1.1.1' not in r:
+              raise SystemExit('Missing README version header')
+          r=r.replace('BIG WALK HIDE + SEEK — PROTOTYPE 1.1.1','BIG WALK HIDE + SEEK — PROTOTYPE 1.1.2',1)
+          marker='WHAT CHANGED IN 1.1.1\n'
+          if marker not in r:
+              raise SystemExit('Missing README changelog marker')
+          r=r.replace(marker,
+              'WHAT CHANGED IN 1.1.2\n'
+              '---------------------\n'
+              '- Moved Pan / inspect, Add marker, and Distance + bearing ruler out of the Map Tools panel.\n'
+              '- Added a compact floating icon toolbar directly on the map.\n'
+              '- Tool icons are a hand, diamond, and ruler with no visible text.\n'
+              '- Active tool remains highlighted; tooltips and accessible labels are retained.\n\n\n'
+              'WHAT CHANGED IN 1.1.1\n',1)
+          readme.write_text(r)
+          PY
+
+      - name: Validate update
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html=Path('index.html').read_text()
+          blocks=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',html,re.S)
+          if not blocks:
+              raise SystemExit('No script block found')
+          Path('/tmp/bigwalk.js').write_text('\n'.join(blocks))
+          for id_ in ('panModeBtn','placeModeBtn','rulerModeBtn','mapToolDock'):
+              if html.count(f'id="{id_}"') != 1:
+                  raise SystemExit(f'{id_} must appear exactly once')
+          if 'Interaction mode' in html:
+              raise SystemExit('Old Interaction mode section still exists')
+          PY
+          node --check /tmp/bigwalk.js
+          git diff --check
+
+      - name: Commit update and remove one-off workflow
+        shell: bash
+        run: |
+          rm .github/workflows/apply-v1.1.2-floating-tools.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html version.json CHANGELOG.txt README.txt .github/workflows/apply-v1.1.2-floating-tools.yml
+          git commit -m 'Release v1.1.2 floating map tools'
+          git push origin main
