@@ -1,3 +1,7 @@
+v1.1.3
+- Fixed the floating interaction toolbar being stuck on Pan / inspect
+- Prevented map pointer capture from swallowing toolbar button clicks
+
 v1.1.2
 - Moved the three interaction tools out of the side panel into a compact floating map toolbar
 - Replaced visible tool text with hand, diamond, and ruler icons
