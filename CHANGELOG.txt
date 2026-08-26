@@ -1,0 +1,27 @@
+v1.1.0
+- GitHub Pages-ready static hosting package
+- Hosted HTTPS -> loopback live-location support
+- Update detection / Reload latest banner
+- Added version.json, .nojekyll, and deployment guide
+
+v1.0.2
+- Added live location connection to BigWalkLivePosition v0.2.0
+- LIVE YOU marker follows the local player's game position
+- Live marker can be selected as the active marker for marker questions
+- Shows live Big Walk Y/X and altitude in Map Tools
+
+v1.0.1
+- Fixed first-launch map image initialization when opening index.html locally
+- Initialization now works whether the image load event happens before or after script setup
+
+v1.0
+- Added Purple Tunnel and Microphone landmarks
+- Added landmark questions: nearest landmark and landmark radius
+- Added landmark unlock timing (default 40 minutes)
+- Added support for multiple markers
+- Added active marker selection
+- Marker questions now use the active marker
+
+v0.9
+- Global question cooldown
+- Added changelog tab
