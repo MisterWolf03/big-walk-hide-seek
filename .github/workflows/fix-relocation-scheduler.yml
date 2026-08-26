@@ -13,20 +13,49 @@ jobs:
         with:
           ref: v1.2.0-rooms
           fetch-depth: 0
-      - name: Wire relocation scheduler into room timer
+      - name: Make relocation scheduler room-state driven
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('index.html')
-          s=p.read_text()
-          old='''function tickMatchTimer(){\n  if(roomModeConnected()){renderMatchTimer();return;}\n  if(!matchRunning)return;\n'''
-          new='''function tickMatchTimer(){\n  if(roomModeConnected()){\n    Promise.resolve(maybeHostAdvanceRelocation()).catch(err=>console.warn("Relocation scheduler failed",err));\n    renderMatchTimer();\n    return;\n  }\n  if(!matchRunning)return;\n'''
-          n=s.count(old)
-          if n!=1:
-              raise SystemExit(f'Expected one room timer hook, found {n}')
-          p.write_text(s.replace(old,new,1))
+
+          def once(s, old, new, label):
+              n=s.count(old)
+              if n!=1: raise SystemExit(f'{label}: expected 1 match, found {n}')
+              return s.replace(old,new,1)
+
+          def patch_rooms(path):
+              p=Path(path); s=p.read_text()
+              s=once(s,
+              '''function isHost(){ return isConnected() && roomData?.meta?.hostUid === user.uid; }\nfunction canControlMatch(){ return !isConnected() || isHost(); }\n''',
+              '''function isHost(){ return isConnected() && roomData?.meta?.hostUid === user.uid; }\nfunction isMatchRunning(){ return !!roomData?.state?.match?.running; }\nfunction canControlMatch(){ return !isConnected() || isHost(); }\n''','shared match running api')
+              s=once(s,
+              '''  isConnected,\n  isHost,\n  canControlMatch,\n''',
+              '''  isConnected,\n  isHost,\n  isMatchRunning,\n  canControlMatch,\n''','export shared match running api')
+              p.write_text(s)
+
+          def patch_index(path):
+              p=Path(path); s=p.read_text()
+              s=once(s,
+              '''let localRelocationPlan=null,relocationMutationBusy=false;\nlet matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;\n''',
+              '''let localRelocationPlan=null,relocationMutationBusy=false;\nlet relocationSchedulerError=\"\";\nlet matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;\n''','scheduler error state')
+              s=once(s,
+              '''function roomRole(){return window.BigWalkRooms?.getRole?.()||null;}\nfunction isRoomHider(){return roomModeConnected()&&roomRole()===\"hider\";}\nfunction resetLocalRelocationPlan(){localRelocationPlan=null;}\n''',
+              '''function roomRole(){return window.BigWalkRooms?.getRole?.()||null;}\nfunction isRoomHider(){return roomModeConnected()&&roomRole()===\"hider\";}\nfunction roomMatchRunning(){return roomModeConnected()?!!window.BigWalkRooms?.isMatchRunning?.():matchRunning;}\nfunction roomCanDriveRelocation(){return roomModeConnected()&&(!!window.BigWalkRooms?.isHost?.()||roomRole()===\"seeker\");}\nfunction resetLocalRelocationPlan(){localRelocationPlan=null;}\n''','room scheduler authority')
+              s=once(s,
+              '''  if(!roomModeConnected()||!window.BigWalkRooms?.isHost?.()||relocationMutationBusy||!matchRunning)return;\n''',
+              '''  if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning())return;\n''','scheduler guard')
+              s=once(s,
+              '''  }else{\n    const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);\n    headline.textContent=formatTime(next);status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:\"Waiting\";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent=\"—\";\n    message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;\n  }\n''',
+              '''  }else{\n    const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);\n    headline.textContent=formatTime(next);target.textContent=`${relocationSettings.minDistance} units`;progress.textContent=\"—\";\n    if(relocationSchedulerError){\n      status.textContent=\"Scheduler error\";\n      message.textContent=`Could not start relocation: ${relocationSchedulerError}`;\n    }else if(!window.BigWalkRooms?.hasHider?.()){\n      status.textContent=\"Waiting for Hider\";\n      message.textContent=next<=.01?\"Relocation is due, but there is no Hider currently in the room.\":`Next relocation in ${formatTime(next)}. A Hider must be in the room when it becomes due.`;\n    }else if(!roomMatchRunning()){\n      status.textContent=\"Match paused\";\n      message.textContent=\"The relocation clock will resume when the shared match resumes.\";\n    }else if(next<=.01){\n      status.textContent=\"Starting…\";\n      message.textContent=\"Relocation is due and the room is starting it now.\";\n    }else{\n      status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:\"Waiting\";\n      message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;\n    }\n  }\n''','relocation waiting diagnostics')
+              s=once(s,
+              '''    maybeHostAdvanceRelocation().catch(err=>console.warn(\"Relocation state update failed\",err));\n    renderMatchTimer();return;\n''',
+              '''    maybeHostAdvanceRelocation().then(()=>{relocationSchedulerError=\"\";}).catch(err=>{\n      relocationSchedulerError=String(err?.message||err);\n      console.warn(\"Relocation state update failed\",err);\n    });\n    renderMatchTimer();return;\n''','scheduler error surface')
+              p.write_text(s)
+
+          patch_rooms('rooms.js')
+          patch_index('index.html')
           PY
-      - name: Validate inline JavaScript
+      - name: Validate source branch
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -37,12 +66,67 @@ jobs:
           Path('/tmp/index-inline.js').write_text('\n'.join(scripts))
           PY
           node --check /tmp/index-inline.js
+          cp rooms.js /tmp/rooms.mjs
+          node --check /tmp/rooms.mjs
           git diff --check
-      - name: Commit fix and remove workflow
+      - name: Commit source fix
         run: |
           rm .github/workflows/fix-relocation-scheduler.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add index.html .github/workflows/fix-relocation-scheduler.yml
-          git commit -m 'Fix forced relocation scheduler'
+          git add index.html rooms.js .github/workflows/fix-relocation-scheduler.yml
+          git commit -m 'Harden forced relocation scheduler'
           git push origin HEAD:v1.2.0-rooms
+      - name: Patch isolated Rooms preview
+        run: |
+          git checkout -B main origin/main
+          python - <<'PY'
+          from pathlib import Path
+
+          def once(s, old, new, label):
+              n=s.count(old)
+              if n!=1: raise SystemExit(f'{label}: expected 1 match, found {n}')
+              return s.replace(old,new,1)
+
+          p=Path('rooms-preview/rooms.js'); s=p.read_text()
+          s=once(s,
+          '''function isHost(){ return isConnected() && roomData?.meta?.hostUid === user.uid; }\nfunction canControlMatch(){ return !isConnected() || isHost(); }\n''',
+          '''function isHost(){ return isConnected() && roomData?.meta?.hostUid === user.uid; }\nfunction isMatchRunning(){ return !!roomData?.state?.match?.running; }\nfunction canControlMatch(){ return !isConnected() || isHost(); }\n''','preview shared match running api')
+          s=once(s,
+          '''  isConnected,\n  isHost,\n  canControlMatch,\n''',
+          '''  isConnected,\n  isHost,\n  isMatchRunning,\n  canControlMatch,\n''','preview export shared match running api')
+          p.write_text(s)
+
+          p=Path('rooms-preview/index.html'); s=p.read_text()
+          s=once(s,
+          '''let localRelocationPlan=null,relocationMutationBusy=false;\nlet matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;\n''',
+          '''let localRelocationPlan=null,relocationMutationBusy=false;\nlet relocationSchedulerError=\"\";\nlet matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;\n''','preview scheduler error state')
+          s=once(s,
+          '''function roomRole(){return window.BigWalkRooms?.getRole?.()||null;}\nfunction isRoomHider(){return roomModeConnected()&&roomRole()===\"hider\";}\nfunction resetLocalRelocationPlan(){localRelocationPlan=null;}\n''',
+          '''function roomRole(){return window.BigWalkRooms?.getRole?.()||null;}\nfunction isRoomHider(){return roomModeConnected()&&roomRole()===\"hider\";}\nfunction roomMatchRunning(){return roomModeConnected()?!!window.BigWalkRooms?.isMatchRunning?.():matchRunning;}\nfunction roomCanDriveRelocation(){return roomModeConnected()&&(!!window.BigWalkRooms?.isHost?.()||roomRole()===\"seeker\");}\nfunction resetLocalRelocationPlan(){localRelocationPlan=null;}\n''','preview room scheduler authority')
+          s=once(s,
+          '''  if(!roomModeConnected()||!window.BigWalkRooms?.isHost?.()||relocationMutationBusy||!matchRunning)return;\n''',
+          '''  if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning())return;\n''','preview scheduler guard')
+          s=once(s,
+          '''  }else{\n    const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);\n    headline.textContent=formatTime(next);status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:\"Waiting\";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent=\"—\";\n    message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;\n  }\n''',
+          '''  }else{\n    const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);\n    headline.textContent=formatTime(next);target.textContent=`${relocationSettings.minDistance} units`;progress.textContent=\"—\";\n    if(relocationSchedulerError){\n      status.textContent=\"Scheduler error\";\n      message.textContent=`Could not start relocation: ${relocationSchedulerError}`;\n    }else if(!window.BigWalkRooms?.hasHider?.()){\n      status.textContent=\"Waiting for Hider\";\n      message.textContent=next<=.01?\"Relocation is due, but there is no Hider currently in the room.\":`Next relocation in ${formatTime(next)}. A Hider must be in the room when it becomes due.`;\n    }else if(!roomMatchRunning()){\n      status.textContent=\"Match paused\";\n      message.textContent=\"The relocation clock will resume when the shared match resumes.\";\n    }else if(next<=.01){\n      status.textContent=\"Starting…\";\n      message.textContent=\"Relocation is due and the room is starting it now.\";\n    }else{\n      status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:\"Waiting\";\n      message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;\n    }\n  }\n''','preview relocation waiting diagnostics')
+          s=once(s,
+          '''    maybeHostAdvanceRelocation().catch(err=>console.warn(\"Relocation state update failed\",err));\n    renderMatchTimer();return;\n''',
+          '''    maybeHostAdvanceRelocation().then(()=>{relocationSchedulerError=\"\";}).catch(err=>{\n      relocationSchedulerError=String(err?.message||err);\n      console.warn(\"Relocation state update failed\",err);\n    });\n    renderMatchTimer();return;\n''','preview scheduler error surface')
+          p.write_text(s)
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('rooms-preview/index.html').read_text()
+          scripts=re.findall(r'<script>([\s\S]*?)</script>',s)
+          Path('/tmp/preview-inline.js').write_text('\n'.join(scripts))
+          PY
+          node --check /tmp/preview-inline.js
+          cp rooms-preview/rooms.js /tmp/preview-rooms.mjs
+          node --check /tmp/preview-rooms.mjs
+          grep -q 'src="../big-walk-map.png"' rooms-preview/index.html
+          git diff --check
+          git add rooms-preview/index.html rooms-preview/rooms.js
+          git commit -m 'Fix Rooms preview relocation trigger'
+          git push origin HEAD:main
