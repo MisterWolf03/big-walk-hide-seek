@@ -1,0 +1,136 @@
+name: Apply v1.1.4 waypoint naming cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-v1.1.4-waypoint-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply v1.1.4 changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+
+          s=s.replace('Prototype 1.1.3','Prototype 1.1.4',1)
+          s=s.replace('const APP_VERSION="1.1.3";','const APP_VERSION="1.1.4";',1)
+
+          s=s.replace('''  .mapToolBtn:focus-visible{outline:2px solid #fff;outline-offset:2px}\n''','''  .mapToolBtn:focus-visible{outline:2px solid #fff;outline-offset:2px}\n  #waypointNamePopover{\n    display:none;position:absolute;top:calc(100% + 7px);left:55px;width:190px;padding:6px;\n    background:rgba(17,21,27,.96);border:1px solid var(--line);border-radius:9px;\n    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)\n  }\n  #waypointNameInput{width:100%;padding:8px 9px;font-size:12px}\n''',1)
+          s=s.replace('''    #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}\n    .mapToolBtn{width:40px;height:40px;min-width:40px}\n''','''    #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}\n    .mapToolBtn{width:40px;height:40px;min-width:40px}\n    #waypointNamePopover{left:50px;width:170px}\n''',1)
+
+          toolbar='''      <button id="rulerModeBtn" class="mapToolBtn" type="button" title="Distance + bearing ruler" aria-label="Distance + bearing ruler" aria-pressed="false">\n        <svg viewBox="0 0 24 24" aria-hidden="true">\n          <rect x="3" y="7" width="18" height="10" rx="2"/>\n          <path d="M7 7v4M11 7v2.5M15 7v4M19 7v2.5"/>\n        </svg>\n      </button>\n'''
+          if toolbar not in s: raise SystemExit('toolbar target missing')
+          s=s.replace(toolbar,toolbar+'''      <div id="waypointNamePopover">\n        <input id="waypointNameInput" type="text" maxlength="40" autocomplete="off" placeholder="Waypoint name (optional)" aria-label="Waypoint name">\n      </div>\n''',1)
+
+          old='''        <label>New marker label (optional)</label>\n        <input id="markerLabelInput" type="text" placeholder="e.g. Seeker A">\n'''
+          if old not in s: raise SystemExit('marker label target missing')
+          s=s.replace(old,'',1)
+
+          s=s.replace('''        <button id="calBtn" style="margin-top:8px">Calibration debug</button>\n''','',1)
+          cal='''      <section>\n        <h3>Calibration</h3>\n        <p class="small good">Five-point affine calibration is retained from v0.2 and is visually aligned across the map.</p>\n        <p class="small">Calibration Debug shows recovered control points and fitted tower positions.</p>\n      </section>\n\n'''
+          if cal not in s: raise SystemExit('calibration section target missing')
+          s=s.replace(cal,'',1)
+
+          ch='''      <div class="changeEntry">\n        <h4>v1.1.3 — Floating toolbar click fix</h4>\n'''
+          if ch not in s: raise SystemExit('changelog target missing')
+          s=s.replace(ch,'''      <div class="changeEntry">\n        <h4>v1.1.4 — Waypoint naming + settings cleanup</h4>\n        <ul>\n          <li>Waypoint names are now entered from a compact field directly beneath the diamond placement tool.</li>\n          <li>Removed the old marker-name textbox from the Map Tools sidebar.</li>\n          <li>Removed the Calibration Debug toggle and Calibration settings section.</li>\n        </ul>\n      </div>\n\n'''+ch,1)
+
+          controls='''const controlPixels = {\n  Red:    {x:497.7640, y:606.3009},\n  Yellow: {x:664.3329, y:237.0822},\n  Green:  {x:1008.4276,y:879.0677},\n  Black:  {x:774.4832, y:414.2510},\n  Blue:   {x:954.8359, y:475.6674}\n};\n\n'''
+          if controls not in s: raise SystemExit('controlPixels target missing')
+          s=s.replace(controls,'',1)
+          s=s.replace('let showGrid=true, showTowers=true, showLandmarks=true, showCalibration=false, showTowerRegions=false;',
+                      'let showGrid=true, showTowers=true, showLandmarks=true, showTowerRegions=false;',1)
+
+          refs='''const panModeBtn=document.getElementById("panModeBtn");\nconst placeModeBtn=document.getElementById("placeModeBtn");\nconst rulerModeBtn=document.getElementById("rulerModeBtn");\n'''
+          if refs not in s: raise SystemExit('tool refs target missing')
+          s=s.replace(refs,refs+'''const waypointNamePopover=document.getElementById("waypointNamePopover");\nconst waypointNameInput=document.getElementById("waypointNameInput");\n''',1)
+
+          old='''  rulerModeBtn.setAttribute("aria-pressed",String(mode==="ruler"));\n  stage.style.cursor=mode==="pan"?"grab":"crosshair";\n}'''
+          new='''  rulerModeBtn.setAttribute("aria-pressed",String(mode==="ruler"));\n  waypointNamePopover.style.display=mode==="place"?"block":"none";\n  stage.style.cursor=mode==="pan"?"grab":"crosshair";\n}'''
+          if old not in s: raise SystemExit('setToolMode target missing')
+          s=s.replace(old,new,1)
+
+          old='''  drawPlayerMarker();drawRuler();\n  if(showCalibration)drawCalibration();\n  renderHistory();'''
+          if old not in s: raise SystemExit('draw calibration call target missing')
+          s=s.replace(old,'''  drawPlayerMarker();drawRuler();\n  renderHistory();''',1)
+
+          start=s.find('function drawCalibration(){')
+          end=s.find('function drawPlayerMarker(){',start)
+          if start<0 or end<0: raise SystemExit('drawCalibration function target missing')
+          s=s[:start]+s[end:]
+
+          old='''panModeBtn.onclick=()=>setToolMode("pan");\nplaceModeBtn.onclick=()=>setToolMode("place");\nrulerModeBtn.onclick=()=>{setToolMode("ruler");if(rulerA&&rulerB){rulerA=null;rulerB=null;updateRulerPanel();draw();}};'''
+          new='''panModeBtn.onclick=()=>setToolMode("pan");\nplaceModeBtn.onclick=()=>{setToolMode("place");requestAnimationFrame(()=>waypointNameInput.focus());};\nrulerModeBtn.onclick=()=>{setToolMode("ruler");if(rulerA&&rulerB){rulerA=null;rulerB=null;updateRulerPanel();draw();}};'''
+          if old not in s: raise SystemExit('tool click target missing')
+          s=s.replace(old,new,1)
+
+          old='''  addMarker(parsed.x,parsed.y,document.getElementById("markerLabelInput").value);\n  input.value="";\n  document.getElementById("markerLabelInput").value="";'''
+          if old not in s: raise SystemExit('coordinate marker label target missing')
+          s=s.replace(old,'''  addMarker(parsed.x,parsed.y,"");\n  input.value="";''',1)
+
+          s=s.replace('''document.getElementById("calBtn").onclick=()=>{showCalibration=!showCalibration;draw();};\n\n''','',1)
+
+          old='''      addMarker(m.x,m.y,document.getElementById("markerLabelInput").value);\n      document.getElementById("markerLabelInput").value="";'''
+          if old not in s: raise SystemExit('map marker label target missing')
+          s=s.replace(old,'''      addMarker(m.x,m.y,waypointNameInput.value);\n      waypointNameInput.value="";''',1)
+
+          p.write_text(s)
+
+          Path('version.json').write_text('{\n  "version": "1.1.4",\n  "released": "2026-08-26"\n}\n')
+          cp=Path('CHANGELOG.txt')
+          cp.write_text('v1.1.4\n- Moved optional waypoint naming to a compact field beneath the diamond placement tool\n- Removed the marker-name textbox from the Map Tools sidebar\n- Removed Calibration Debug and the Calibration settings section\n\n'+cp.read_text())
+
+          rp=Path('README.txt')
+          r=rp.read_text().replace('BIG WALK HIDE + SEEK — PROTOTYPE 1.1.3','BIG WALK HIDE + SEEK — PROTOTYPE 1.1.4',1)
+          entry='WHAT CHANGED IN 1.1.4\n---------------------\n- Waypoint names now appear as a compact field beneath the diamond placement tool.\n- Removed the old marker-name textbox from the Map Tools sidebar.\n- Removed Calibration Debug and the Calibration settings section.\n\n\n'
+          if 'WHAT CHANGED IN 1.1.3\n' in r:
+              r=r.replace('WHAT CHANGED IN 1.1.3\n',entry+'WHAT CHANGED IN 1.1.3\n',1)
+          elif 'WHAT CHANGED IN 1.1.2\n' in r:
+              r=r.replace('WHAT CHANGED IN 1.1.2\n',entry+'WHAT CHANGED IN 1.1.2\n',1)
+          else:
+              r += '\n\n'+entry
+          rp.write_text(r)
+          PY
+
+      - name: Validate build
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re, collections
+          html=Path('index.html').read_text()
+          forbidden=['markerLabelInput','calBtn','showCalibration','drawCalibration','controlPixels','<h3>Calibration</h3>']
+          for x in forbidden:
+              if x in html: raise SystemExit(f'Forbidden leftover: {x}')
+          for x in ['waypointNamePopover','waypointNameInput','const APP_VERSION="1.1.4";']:
+              if x not in html: raise SystemExit(f'Missing expected v1.1.4 content: {x}')
+          ids=re.findall(r'\bid="([^"]+)"',html)
+          dup=[x for x,c in collections.Counter(ids).items() if c>1]
+          if dup: raise SystemExit(f'Duplicate ids: {dup}')
+          blocks=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',html,re.S)
+          Path('/tmp/bigwalk.js').write_text('\n'.join(blocks))
+          PY
+          node --check /tmp/bigwalk.js
+          git diff --check
+
+      - name: Commit release
+        shell: bash
+        run: |
+          rm .github/workflows/apply-v1.1.4-waypoint-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html version.json CHANGELOG.txt README.txt .github/workflows/apply-v1.1.4-waypoint-cleanup.yml
+          git commit -m 'Release v1.1.4 waypoint naming cleanup'
+          git push origin main
