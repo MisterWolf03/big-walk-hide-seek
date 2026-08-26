@@ -1,0 +1,42 @@
+name: Fix Rooms preview map path
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/fix-preview-map.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Point preview at root map image
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('rooms-preview/index.html')
+          s = p.read_text()
+          old = '<img id="mapImage" src="big-walk-map.png" alt="">'
+          new = '<img id="mapImage" src="../big-walk-map.png" alt="">'
+          if old not in s:
+              raise SystemExit('Expected preview map image tag not found')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          grep -F '<img id="mapImage" src="../big-walk-map.png" alt="">' rooms-preview/index.html
+          git diff --check
+      - name: Commit fix and remove workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/fix-preview-map.yml
+          git add rooms-preview/index.html
+          git commit -m 'Fix Rooms preview map image path'
+          git push origin main
