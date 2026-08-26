@@ -1,0 +1,69 @@
+name: Publish Rooms preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-rooms-preview.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Rooms branch
+        run: git fetch origin v1.2.0-rooms:refs/remotes/origin/v1.2.0-rooms
+
+      - name: Build isolated preview folder
+        run: |
+          set -euo pipefail
+          mkdir -p rooms-preview
+          git show refs/remotes/origin/v1.2.0-rooms:index.html > rooms-preview/index.html
+          git show refs/remotes/origin/v1.2.0-rooms:rooms.js > rooms-preview/rooms.js
+          git show refs/remotes/origin/v1.2.0-rooms:firebase-config.js > rooms-preview/firebase-config.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('rooms-preview/index.html')
+          s = p.read_text()
+          s = s.replace('src="big-walk-map.png"', 'src="../big-walk-map.png"')
+          s = s.replace('fetch(`version.json?_', 'fetch(`../version.json?_')
+          p.write_text(s)
+          PY
+          cat > rooms-preview/README.txt <<'EOF'
+          BIG WALK HIDE + SEEK — ROOMS PREVIEW
+
+          This folder is an isolated browser-test build sourced from the v1.2.0-rooms branch.
+          It does not replace the stable site at the repository root.
+          EOF
+
+      - name: Validate preview JavaScript
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s = Path('rooms-preview/index.html').read_text()
+          blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', s, flags=re.S|re.I)
+          Path('/tmp/rooms-inline.js').write_text('\n'.join(blocks))
+          PY
+          node --check /tmp/rooms-inline.js
+          cp rooms-preview/rooms.js /tmp/rooms.mjs
+          node --check /tmp/rooms.mjs
+          git diff --check
+
+      - name: Commit preview and remove one-off workflow
+        run: |
+          set -euo pipefail
+          rm .github/workflows/publish-rooms-preview.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rooms-preview .github/workflows/publish-rooms-preview.yml
+          git commit -m 'Publish isolated Rooms preview'
+          git push origin main
