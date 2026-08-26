@@ -368,6 +368,7 @@
         <div class="metric"><b>Minimum move</b><span id="relocationTarget">250 units</span></div>
         <div class="metric"><b>Progress</b><span id="relocationProgress">—</span></div>
         <div id="relocationMessage" class="small" style="margin-top:8px">The first relocation begins at 25:00.</div>
+        <button class="primary" id="relocationReadyBtn" style="display:none;margin-top:8px">Ready</button>
       </section>
 
       <section>
@@ -668,7 +669,7 @@
             <input id="relocationIntervalMinutes" type="number" min="1" step="1" value="20">
           </label>
           <label>Target window (min)
-            <input id="relocationWindowMinutes" type="number" min="0.5" step="0.5" value="3">
+            <input id="relocationWindowMinutes" type="number" min="0.5" step="0.5" value="5">
           </label>
           <label>Minimum displacement
             <input id="relocationMinDistance" type="number" min="25" step="25" value="250">
@@ -910,7 +911,7 @@ let questionCooldownSeconds=300;
 let questionCooldownUntil=0;
 let seekerPointsSpent=0;
 const pointsPerMinute=1;
-let relocationSettings={firstAt:1500,interval:1200,window:180,minDistance:250,skipBelow:75};
+let relocationSettings={firstAt:1500,interval:1200,window:300,minDistance:250,skipBelow:75};
 let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
 let localRelocationPlan=null,relocationMutationBusy=false;
 let relocationSchedulerError="";
@@ -1134,9 +1135,6 @@ function updateLocalRelocation(){
     if(localRelocationPlan.skip)signalRelocationResult("skipped");
   }
   const plan=localRelocationPlan;if(!plan||plan.invalid||plan.skip)return;
-  const current={x:liveMarker.x,y:liveMarker.y};
-  const displacement=Math.hypot(current.x-plan.start.x,current.y-plan.start.y);
-  if(displacement>=plan.target&&pointInRelocationRegion(current,plan))signalRelocationResult("completed");
 }
 async function maybeHostAdvanceRelocation(){
   if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning())return;
@@ -1163,8 +1161,9 @@ async function maybeHostAdvanceRelocation(){
   }finally{relocationMutationBusy=false;}
 }
 function updateRelocationUi(){
-  const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),status=document.getElementById("relocationStatus"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage");
+  const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),status=document.getElementById("relocationStatus"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage"),readyBtn=document.getElementById("relocationReadyBtn");
   if(!section)return;
+  readyBtn.style.display="none";readyBtn.disabled=true;readyBtn.textContent="Ready";
   section.classList.toggle("relocationActive",!!relocationState.active);
   const now=currentMatchSeconds();
   if(!roomModeConnected()){
@@ -1180,10 +1179,13 @@ function updateRelocationUi(){
       else if(localRelocationPlan.invalid){target.textContent="—";progress.textContent="Start outside legal area";message.textContent="Move back inside the current valid search area so relocation can begin.";}
       else if(localRelocationPlan.skip){target.textContent="Skipped";progress.textContent=`Max ≈ ${Math.round(localRelocationPlan.maxDistance)} units`;message.textContent="The remaining connected legal area is too cramped for a meaningful relocation. Sending a skip result.";}
       else{
-        const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y),legal=pointInRelocationRegion(liveMarker,localRelocationPlan);
+        const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y),legal=pointInRelocationRegion(liveMarker,localRelocationPlan),ready=d>=localRelocationPlan.target&&legal;
         target.textContent=`${Math.round(localRelocationPlan.target)} units${localRelocationPlan.target<relocationSettings.minDistance?" · scaled":""}`;
         progress.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)}${legal?"":" · outside connected legal area"}`;
-        message.textContent=localRelocationPlan.signaled?"Relocation complete — waiting for the room to confirm.":"Displacement is measured from where this relocation started, not total distance traveled.";
+        readyBtn.style.display=(ready||localRelocationPlan.signaled)?"block":"none";
+        readyBtn.disabled=!ready||localRelocationPlan.signaled;
+        readyBtn.textContent=localRelocationPlan.signaled?"Ready — confirming…":"Ready";
+        message.textContent=localRelocationPlan.signaled?"Ready confirmed — waiting for the room to schedule the next relocation.":ready?"Minimum move reached. Keep searching if you want, then press Ready once you have a hiding spot.":"Displacement is measured from where this relocation started, not total distance traveled.";
       }
     }else{
       target.textContent=`${relocationSettings.minDistance} units minimum`;
@@ -2125,6 +2127,15 @@ document.getElementById("applyScheduleBtn").onclick=()=>{
   setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
+document.getElementById("relocationReadyBtn").onclick=()=>{
+  if(!isRoomHider()||!relocationState.active||!localRelocationPlan||localRelocationPlan.invalid||localRelocationPlan.skip||localRelocationPlan.signaled)return;
+  if(!liveMarker)return;
+  const current={x:liveMarker.x,y:liveMarker.y};
+  const displacement=Math.hypot(current.x-localRelocationPlan.start.x,current.y-localRelocationPlan.start.y);
+  if(displacement<localRelocationPlan.target||!pointInRelocationRegion(current,localRelocationPlan))return;
+  signalRelocationResult("completed");
+  renderMatchTimer();
+};
 document.getElementById("applyRelocationSettingsBtn").onclick=()=>{
   const v=document.getElementById("relocationSettingsValidation");v.textContent="";
   if(roomModeConnected()&&!window.BigWalkRooms?.isHost?.()){v.textContent="Only the room host can change relocation settings.";return;}
