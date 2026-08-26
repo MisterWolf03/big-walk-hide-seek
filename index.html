@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Big Walk Hide + Seek — Prototype 1.1.4</title>
+<title>Big Walk Hide + Seek — Prototype 1.2.0</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#181d24; --panel2:#222934; --line:#303947;
@@ -286,7 +286,7 @@
   <div id="panel">
 
     <div id="view-room" class="panelView">
-      <div class="panelHeader"><h2>Room <span class="small">v1.2.0 preview</span></h2><button class="closePanel">Hide</button></div>
+      <div class="panelHeader"><h2>Room <span class="small">v1.2.0</span></h2><button class="closePanel">Hide</button></div>
       <div id="roomStatus" class="roomStatus">Initializing room service…</div>
       <div id="roomSetupNotice" class="roomSetupNotice">Rooms need a Firebase Realtime Database project before they can connect across devices. Follow <b>ROOMS_SETUP.md</b> in the repo, then add the Firebase web config to <b>firebase-config.js</b>.</div>
 
@@ -374,7 +374,7 @@
       <section>
         <h3>Question unlocks</h3>
         <div class="milestones">
-          <div id="msGrid" class="milestone">10:00 · Gridline</div>
+          <div id="msGrid" class="milestone">10:00 · Centerline</div>
           <div id="msNearest" class="milestone">20:00 · Nearest tower</div>
           <div id="msTowerRadius" class="milestone">30:00 · Tower radius</div>
           <div id="msLandmark" class="milestone">40:00 · Landmark questions</div>
@@ -461,21 +461,19 @@
       </section>
 
       <section id="gridQuestionSection" class="questionCard locked">
-        <h3>Gridline</h3>
+        <h3>Centerline</h3>
         <div class="questionCost" id="gridQuestionCost">Cost: 4 points</div>
         <div class="lockNotice" id="gridLockNotice">Locked.</div>
-        <label>Axis</label>
+        <label>Centerline</label>
         <select id="axis">
-          <option value="y">North / South (Y)</option>
-          <option value="x">West / East (X)</option>
+          <option value="y">Horizontal centerline — Y 3700</option>
+          <option value="x">Vertical centerline — X 1700</option>
         </select>
-        <label>Coordinate</label>
-        <input id="splitValue" type="number" step="100" value="3800">
-        <p class="small">Legal central gridlines only: <b>X 15–19</b> or <b>Y 36–40</b>.</p>
+        <p class="small">Centerline questions always cut straight through the middle of the playable map: <b>Y 3700</b> or <b>X 1700</b>.</p>
         <label>Hider's answer</label>
         <select id="splitAnswer">
-          <option value="low">North / West</option>
-          <option value="high">South / East</option>
+          <option value="low">North</option>
+          <option value="high">South</option>
         </select>
         <button class="primary" id="applySplit">Apply answer</button>
         <div id="splitValidation" class="validation"></div>
@@ -603,7 +601,7 @@
 
       <section>
         <h3>Current question schedule</h3>
-        <div class="metric"><b>Gridline</b><span id="ruleGridTime">10:00</span></div>
+        <div class="metric"><b>Centerline</b><span id="ruleGridTime">10:00</span></div>
         <div class="metric"><b>Nearest tower</b><span id="ruleNearestTime">20:00</span></div>
         <div class="metric"><b>Tower radius</b><span id="ruleTowerRadiusTime">30:00</span></div>
         <div class="metric"><b>Landmark questions</b><span id="ruleLandmarkTime">40:00</span></div>
@@ -634,7 +632,7 @@
 
         <label style="margin-top:12px">Individual unlock times (minutes)</label>
         <div class="scheduleGrid">
-          <label>Gridline
+          <label>Centerline
             <input id="gridUnlockMinutes" type="number" min="0" step="1" value="10">
           </label>
           <label>Nearest tower
@@ -726,6 +724,16 @@
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.2.0 — Multiplayer rooms + live gameplay</h4>
+        <ul>
+          <li>Added shared multiplayer rooms with one Hider and multiple Seekers.</li>
+          <li>Added synchronized match state, question history, seeker points, and question cooldowns.</li>
+          <li>Added forced relocation with private Hider tracking, adaptive movement targets, and Ready confirmation.</li>
+          <li>Added distinct Web Audio feedback for unlocks, cooldown completion, relocations, and match controls.</li>
+          <li>Rebalanced the old Gridline question into fixed centerlines at Y 3700 and X 1700.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.1.4 — Waypoint naming + settings cleanup</h4>
         <ul>
@@ -874,7 +882,7 @@
 </div>
 
 <script>
-const APP_VERSION="1.1.4";
+const APP_VERSION="1.2.0";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -1489,7 +1497,7 @@ function updateQuestionLocks(){
 function updateMilestones(){
   const sec=currentMatchSeconds();
   const list=[
-    ["msGrid","grid","Gridline"],["msNearest","nearest","Nearest tower"],
+    ["msGrid","grid","Centerline"],["msNearest","nearest","Nearest tower"],
     ["msTowerRadius","towerRadius","Tower radius"],["msLandmark","landmark","Landmark questions"],
     ["msMarker","marker","Marker questions"]
   ];
@@ -1550,7 +1558,7 @@ function renderMatchTimer(){
   }
   const sec=currentMatchSeconds();
   const upcoming=[
-    [unlockTimes.grid,"Gridline"],[unlockTimes.nearest,"Nearest tower"],
+    [unlockTimes.grid,"Centerline"],[unlockTimes.nearest,"Nearest tower"],
     [unlockTimes.towerRadius,"Tower radius"],[unlockTimes.landmark,"Landmark questions"],
     [unlockTimes.marker,"Marker questions"]
   ].find(([t])=>sec<t);
@@ -1954,9 +1962,10 @@ function addConstraint(c,text,cost=0){
   return true;
 }
 function updateGridInputRules(){
-  const axis=document.getElementById("axis").value,input=document.getElementById("splitValue");
-  if(axis==="x"){input.min=1500;input.max=1900;input.step=100;if(+input.value<1500||+input.value>1900)input.value=1700;}
-  else{input.min=3600;input.max=4000;input.step=100;if(+input.value<3600||+input.value>4000)input.value=3800;}
+  const axis=document.getElementById("axis").value,answer=document.getElementById("splitAnswer");
+  const low=answer.querySelector('option[value="low"]'),high=answer.querySelector('option[value="high"]');
+  if(axis==="x"){low.textContent="West";high.textContent="East";}
+  else{low.textContent="North";high.textContent="South";}
   document.getElementById("splitValidation").textContent="";
 }
 
@@ -2112,12 +2121,8 @@ document.getElementById("copyRulerBtn").onclick=()=>{
 
 document.getElementById("axis").onchange=updateGridInputRules;
 document.getElementById("applySplit").onclick=()=>{
-  const axis=document.getElementById("axis").value,value=+document.getElementById("splitValue").value,keep=document.getElementById("splitAnswer").value;
-  const validation=document.getElementById("splitValidation");validation.textContent="";
-  const min=axis==="x"?1500:3600,max=axis==="x"?1900:4000;
-  if(!Number.isFinite(value)||value<min||value>max||value%100!==0){
-    validation.textContent=axis==="x"?"Invalid gridline — use X 15 through X 19 only.":"Invalid gridline — use Y 36 through Y 40 only.";return;
-  }
+  const axis=document.getElementById("axis").value,value=axis==="x"?1700:3700,keep=document.getElementById("splitAnswer").value;
+  document.getElementById("splitValidation").textContent="";
   const dir=axis==="y"?(keep==="low"?"north":"south"):(keep==="low"?"west":"east");
   addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`,questionCostFor("grid"));
 };
@@ -2201,7 +2206,7 @@ document.getElementById("applyScheduleBtn").onclick=()=>{
     v.textContent="Unlock times must be 0 minutes or greater.";return;
   }
   if(!(vals[0]<=vals[1]&&vals[1]<=vals[2]&&vals[2]<=vals[3]&&vals[3]<=vals[4])){
-    v.textContent="Unlock times must stay in order: Gridline ≤ Nearest Tower ≤ Tower Radius ≤ Landmark Questions ≤ Marker Questions.";return;
+    v.textContent="Unlock times must stay in order: Centerline ≤ Nearest Tower ≤ Tower Radius ≤ Landmark Questions ≤ Marker Questions.";return;
   }
   if(!Number.isFinite(cooldownMinutes)||cooldownMinutes<=0){
     v.textContent="Question cooldown must be greater than 0 minutes.";return;
