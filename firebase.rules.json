@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read": "auth != null && data.exists()",
+        ".write": "auth != null && ((!data.exists() && newData.child('meta/hostUid').val() === auth.uid && newData.child('members').child(auth.uid).exists()) || (data.exists() && data.child('members').child(auth.uid).exists()))",
+        ".validate": "!newData.exists() || newData.hasChildren(['meta','members','state'])"
+      }
+    }
+  }
+}
