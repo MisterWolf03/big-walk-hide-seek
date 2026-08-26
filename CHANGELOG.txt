@@ -1,3 +1,10 @@
+v1.2.0 — Multiplayer rooms + live gameplay
+- Multiplayer rooms: one Hider, multiple Seekers.
+- Shared match timer, questions, constraints, cooldowns, and seeker points.
+- Forced relocation with private Hider tracking, adaptive targets, and Ready confirmation.
+- Web Audio feedback for major gameplay events.
+- Gridline rebalanced to fixed centerlines: horizontal Y 3700 and vertical X 1700.
+
 v1.1.4
 - Moved optional waypoint naming to a compact field beneath the diamond placement tool
 - Removed the marker-name textbox from the Map Tools sidebar
