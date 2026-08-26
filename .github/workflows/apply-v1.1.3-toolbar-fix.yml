@@ -1,0 +1,75 @@
+name: Apply v1.1.3 toolbar click fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-v1.1.3-toolbar-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply toolbar fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('Prototype 1.1.2','Prototype 1.1.3',1)
+          s=s.replace('const APP_VERSION="1.1.2";','const APP_VERSION="1.1.3";',1)
+
+          needle='''document.querySelectorAll(".closePanel").forEach(btn=>btn.onclick=hidePanel);\n\ndocument.getElementById("startMatchBtn").onclick=()=>{'''
+          repl='''document.querySelectorAll(".closePanel").forEach(btn=>btn.onclick=hidePanel);\n\n// Keep toolbar pointer events from being captured by the map pane.\nconst mapToolDock=document.getElementById("mapToolDock");\nmapToolDock.addEventListener("pointerdown",e=>e.stopPropagation());\nmapToolDock.addEventListener("pointerup",e=>e.stopPropagation());\n\ndocument.getElementById("startMatchBtn").onclick=()=>{'''
+          if needle not in s: raise SystemExit('Toolbar listener target missing')
+          s=s.replace(needle,repl,1)
+
+          needle='''      <div class="changeEntry">\n        <h4>v1.1.2 — Floating map tools</h4>'''
+          repl='''      <div class="changeEntry">\n        <h4>v1.1.3 — Floating toolbar click fix</h4>\n        <ul>\n          <li>Fixed the floating toolbar being stuck on Pan / inspect.</li>\n          <li>Toolbar pointer events no longer get captured by the underlying map pane.</li>\n        </ul>\n      </div>\n\n      <div class="changeEntry">\n        <h4>v1.1.2 — Floating map tools</h4>'''
+          if needle not in s: raise SystemExit('Changelog target missing')
+          s=s.replace(needle,repl,1)
+          p.write_text(s)
+
+          Path('version.json').write_text('{\n  "version": "1.1.3",\n  "released": "2026-08-25"\n}')
+
+          c=Path('CHANGELOG.txt')
+          c.write_text('v1.1.3\n- Fixed the floating interaction toolbar being stuck on Pan / inspect\n- Prevented map pointer capture from swallowing toolbar button clicks\n\n'+c.read_text())
+
+          r=Path('README.txt')
+          text=r.read_text().replace('BIG WALK HIDE + SEEK — PROTOTYPE 1.1.2','BIG WALK HIDE + SEEK — PROTOTYPE 1.1.3',1)
+          marker='WHAT CHANGED IN 1.1.2\n'
+          if marker not in text: raise SystemExit('README target missing')
+          text=text.replace(marker,'WHAT CHANGED IN 1.1.3\n---------------------\n- Fixed the floating interaction toolbar being stuck on Pan / inspect.\n- Toolbar pointer events no longer get captured by the map pane.\n\n\nWHAT CHANGED IN 1.1.2\n',1)
+          r.write_text(text)
+          PY
+
+      - name: Validate JavaScript
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html=Path('index.html').read_text()
+          blocks=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',html,re.S)
+          Path('/tmp/bigwalk.js').write_text('\n'.join(blocks))
+          PY
+          node --check /tmp/bigwalk.js
+          git diff --check
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          rm .github/workflows/apply-v1.1.3-toolbar-fix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html version.json README.txt CHANGELOG.txt .github/workflows/apply-v1.1.3-toolbar-fix.yml
+          git commit -m 'Release v1.1.3 toolbar click fix'
+          git push origin main
