@@ -696,6 +696,17 @@
       </section>
 
       <section>
+        <h3>Sound</h3>
+        <label><input id="soundEnabled" type="checkbox" style="width:auto;margin-right:6px" checked> Sound effects</label>
+        <label>Volume
+          <input id="soundVolume" type="range" min="0" max="100" step="5" value="60">
+        </label>
+        <div class="metric"><b>Output level</b><span id="soundVolumeValue">60%</span></div>
+        <button id="testSoundBtn" style="margin-top:8px">Test sound</button>
+        <p class="small">Gameplay cues are generated locally with Web Audio. After a refresh, your browser may require one click before it allows sound.</p>
+      </section>
+
+      <section>
         <h3>Development / testing</h3>
         <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>
         <p class="small">Does not change the match timer.</p>
@@ -917,6 +928,83 @@ let localRelocationPlan=null,relocationMutationBusy=false;
 let relocationSchedulerError="";
 let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
 let testingUnlockOverride=false;
+
+const SOUND_STORAGE_KEY="bigwalkSoundSettingsV1";
+let soundSettings={enabled:true,volume:.6};
+try{
+  const saved=JSON.parse(localStorage.getItem(SOUND_STORAGE_KEY)||"null");
+  if(saved&&typeof saved==="object"){
+    if(typeof saved.enabled==="boolean")soundSettings.enabled=saved.enabled;
+    if(Number.isFinite(Number(saved.volume)))soundSettings.volume=Math.max(0,Math.min(1,Number(saved.volume)));
+  }
+}catch{}
+let gameAudioContext=null,audioEventSnapshot=null;
+
+function saveSoundSettings(){
+  try{localStorage.setItem(SOUND_STORAGE_KEY,JSON.stringify(soundSettings));}catch{}
+}
+function ensureGameAudioContext(){
+  const AudioCtx=window.AudioContext||window.webkitAudioContext;
+  if(!AudioCtx)return null;
+  if(!gameAudioContext)gameAudioContext=new AudioCtx();
+  if(gameAudioContext.state==="suspended")gameAudioContext.resume().catch(()=>{});
+  return gameAudioContext;
+}
+function scheduleGameTone(ctx,freq,offset,duration,level=.7,type="sine"){
+  const t=ctx.currentTime+Math.max(0,offset),end=t+duration;
+  const osc=ctx.createOscillator(),gain=ctx.createGain();
+  osc.type=type;osc.frequency.setValueAtTime(freq,t);
+  const peak=Math.max(.0001,soundSettings.volume*.16*level);
+  gain.gain.setValueAtTime(.0001,t);
+  gain.gain.exponentialRampToValueAtTime(peak,t+.012);
+  gain.gain.exponentialRampToValueAtTime(.0001,end);
+  osc.connect(gain);gain.connect(ctx.destination);osc.start(t);osc.stop(end+.025);
+}
+function playGameSound(name){
+  if(!soundSettings.enabled||soundSettings.volume<=0)return;
+  const ctx=ensureGameAudioContext();if(!ctx)return;
+  const tone=(f,o,d,l=.7,t="sine")=>scheduleGameTone(ctx,f,o,d,l,t);
+  if(name==="questionUnlock"){tone(659,.00,.13,.65,"triangle");tone(880,.10,.22,.8,"sine");}
+  else if(name==="cooldownReady"){tone(523,.00,.10,.65,"triangle");tone(784,.08,.18,.75,"sine");}
+  else if(name==="relocationStart"){tone(220,.00,.16,.9,"square");tone(165,.19,.16,.85,"square");tone(220,.38,.22,.95,"square");}
+  else if(name==="relocationReady"){tone(440,.00,.10,.55,"triangle");tone(660,.09,.11,.65,"triangle");tone(880,.18,.20,.8,"sine");}
+  else if(name==="relocationComplete"){tone(392,.00,.11,.55,"triangle");tone(523,.09,.13,.65,"triangle");tone(659,.19,.24,.8,"sine");}
+  else if(name==="matchStart"){tone(330,.00,.12,.55,"sine");tone(440,.10,.14,.65,"sine");tone(660,.21,.22,.8,"triangle");}
+  else if(name==="matchPause"){tone(440,.00,.13,.6,"triangle");tone(330,.11,.20,.6,"sine");}
+  else if(name==="matchResume"){tone(330,.00,.12,.55,"sine");tone(494,.10,.20,.7,"triangle");}
+}
+function audioContextKey(){
+  return roomModeConnected()?`room:${window.BigWalkRooms?.getRoomCode?.()||"connected"}`:"local";
+}
+function localRelocationReadyNow(){
+  if(!isRoomHider()||!relocationState.active||!localRelocationPlan||localRelocationPlan.invalid||localRelocationPlan.skip||localRelocationPlan.signaled||!liveMarker)return false;
+  const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);
+  return d>=localRelocationPlan.target&&pointInRelocationRegion(liveMarker,localRelocationPlan);
+}
+function captureAudioEventState(){
+  const sec=currentMatchSeconds();
+  const unlockCount=Object.values(unlockTimes).filter(t=>sec>=Number(t)).length;
+  return {
+    key:audioContextKey(),running:roomModeConnected()?roomMatchRunning():matchRunning,sec,unlockCount,
+    cooldownActive:!testingUnlockOverride&&(Number(questionCooldownUntil||0)-sec)>.01,
+    relocationActive:roomModeConnected()&&!!relocationState.active,
+    relocationIndex:Number(relocationState.index||0),
+    relocationReady:localRelocationReadyNow()
+  };
+}
+function updateGameAudioEvents(){
+  const now=captureAudioEventState();
+  if(!audioEventSnapshot||audioEventSnapshot.key!==now.key){audioEventSnapshot=now;return;}
+  const prev=audioEventSnapshot;
+  if(!prev.running&&now.running)playGameSound(now.sec<2?"matchStart":"matchResume");
+  else if(prev.running&&!now.running&&now.sec>.1)playGameSound("matchPause");
+  if(now.running&&now.unlockCount>prev.unlockCount)playGameSound("questionUnlock");
+  if(prev.cooldownActive&&!now.cooldownActive&&!now.relocationActive)playGameSound("cooldownReady");
+  if(!prev.relocationActive&&now.relocationActive)playGameSound("relocationStart");
+  if(prev.relocationActive&&!now.relocationActive)playGameSound("relocationComplete");
+  if(!prev.relocationReady&&now.relocationReady)playGameSound("relocationReady");
+  audioEventSnapshot=now;
+}
 
 const panModeBtn=document.getElementById("panModeBtn");
 const placeModeBtn=document.getElementById("placeModeBtn");
@@ -1492,13 +1580,13 @@ function tickMatchTimer(){
       relocationSchedulerError=String(err?.message||err);
       console.warn("Relocation state update failed",err);
     });
-    renderMatchTimer();return;
+    renderMatchTimer();updateGameAudioEvents();return;
   }
-  if(!matchRunning)return;
+  if(!matchRunning){updateGameAudioEvents();return;}
   const now=performance.now();
   if(matchLastTick!==null)matchElapsedMs+=now-matchLastTick;
   matchLastTick=now;
-  renderMatchTimer();
+  renderMatchTimer();updateGameAudioEvents();
 }
 function startTimerLoop(){
   if(timerLoop)clearInterval(timerLoop);
@@ -2127,6 +2215,15 @@ document.getElementById("applyScheduleBtn").onclick=()=>{
   setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
+const soundEnabledEl=document.getElementById("soundEnabled"),soundVolumeEl=document.getElementById("soundVolume"),soundVolumeValueEl=document.getElementById("soundVolumeValue");
+soundEnabledEl.checked=soundSettings.enabled;
+soundVolumeEl.value=String(Math.round(soundSettings.volume*100));
+soundVolumeValueEl.textContent=`${Math.round(soundSettings.volume*100)}%`;
+soundEnabledEl.onchange=e=>{soundSettings.enabled=!!e.target.checked;saveSoundSettings();if(soundSettings.enabled)ensureGameAudioContext();};
+soundVolumeEl.oninput=e=>{soundSettings.volume=Math.max(0,Math.min(1,Number(e.target.value)/100));soundVolumeValueEl.textContent=`${Math.round(soundSettings.volume*100)}%`;saveSoundSettings();};
+document.getElementById("testSoundBtn").onclick=()=>playGameSound("questionUnlock");
+document.addEventListener("pointerdown",()=>ensureGameAudioContext(),{once:true,capture:true});
+document.addEventListener("keydown",()=>ensureGameAudioContext(),{once:true,capture:true});
 document.getElementById("relocationReadyBtn").onclick=()=>{
   if(!isRoomHider()||!relocationState.active||!localRelocationPlan||localRelocationPlan.invalid||localRelocationPlan.skip||localRelocationPlan.signaled)return;
   if(!liveMarker)return;
