@@ -1,0 +1,1906 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Big Walk Hide + Seek — Prototype 1.1.4</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#181d24; --panel2:#222934; --line:#303947;
+    --text:#f5f7fa; --muted:#aab3c0; --accent:#f2c94c; --good:#75e0a3;
+    --danger:#ff7777; --shadow:0 12px 32px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  button,input,select{font:inherit}
+
+  #topbar{
+    height:58px;display:flex;align-items:center;gap:14px;padding:0 14px;
+    border-bottom:1px solid var(--line);background:rgba(17,21,27,.97);z-index:20;
+    position:relative;
+  }
+  #brand{font-weight:800;letter-spacing:.2px;white-space:nowrap}
+  #tabs{display:flex;gap:6px;min-width:0}
+  .tabBtn{
+    border:1px solid transparent;background:transparent;color:#bdc5d0;border-radius:8px;
+    padding:8px 11px;cursor:pointer;white-space:nowrap
+  }
+  .tabBtn:hover{background:#222934;color:#fff}
+  .tabBtn.active{background:#302a16;border-color:#6c5a27;color:#ffe58b}
+  #topTimer{
+    margin-left:auto;display:flex;align-items:center;gap:10px;white-space:nowrap;
+    padding-left:10px
+  }
+  #topTimerClock{font-size:22px;font-weight:800;min-width:68px;text-align:right}
+  #topTimerSub{font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis}
+
+  #app{position:relative;height:calc(100% - 58px);overflow:hidden}
+  #updateBanner{
+    display:none;position:fixed;top:68px;left:50%;transform:translateX(-50%);z-index:60;
+    background:#182a20;border:1px solid #3d7550;color:#dcffe7;border-radius:10px;
+    padding:9px 10px 9px 12px;box-shadow:0 8px 26px rgba(0,0,0,.38);font-size:12px;
+    align-items:center;gap:10px;max-width:calc(100vw - 28px)
+  }
+  #updateBanner button{padding:6px 9px}
+  #mapPane{position:absolute;inset:0;background:#07090c;overflow:hidden}
+  #stage{position:absolute;inset:0;touch-action:none;cursor:grab}
+  #stage.dragging{cursor:grabbing}
+  #mapImage{display:none}
+  canvas{position:absolute;left:0;top:0}
+  #coordTip{
+    position:absolute;display:none;pointer-events:none;z-index:8;
+    background:rgba(9,12,16,.94);color:#fff;border:1px solid rgba(255,255,255,.22);
+    border-radius:7px;padding:5px 7px;font-size:12px;line-height:1.2;
+    box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap;
+    transform:translate(14px,14px)
+  }
+  #mapToolDock{
+    position:absolute;top:14px;left:14px;z-index:9;display:flex;gap:7px;padding:6px;
+    background:rgba(17,21,27,.94);border:1px solid var(--line);border-radius:11px;
+    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)
+  }
+  .mapToolBtn{
+    width:42px;height:42px;min-width:42px;padding:0;display:grid;place-items:center;
+    border-radius:8px;background:#29323e;color:#eef3f8;border:1px solid #465362
+  }
+  .mapToolBtn:hover:not(:disabled){background:#34404e}
+  .mapToolBtn svg{width:21px;height:21px;display:block;stroke:currentColor;fill:none;
+    stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+  .mapToolBtn.toolActive{outline:none;background:#4b3f19!important;border-color:var(--accent);color:#ffe58b}
+  .mapToolBtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  #waypointNamePopover{
+    display:none;position:absolute;top:calc(100% + 7px);left:55px;width:190px;padding:6px;
+    background:rgba(17,21,27,.96);border:1px solid var(--line);border-radius:9px;
+    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)
+  }
+  #waypointNameInput{width:100%;padding:8px 9px;font-size:12px}
+
+  #panel{
+    position:absolute;top:14px;right:14px;width:390px;max-height:calc(100% - 28px);
+    overflow:auto;background:rgba(23,28,35,.97);backdrop-filter:blur(8px);
+    border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);z-index:10;
+  }
+  .panelView{display:none;padding:14px}
+  .panelView.active{display:block}
+  .panelHeader{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px}
+  .panelHeader h2{font-size:16px;margin:0}
+  .closePanel{width:auto;padding:6px 9px}
+
+  section{
+    background:var(--panel2);border:1px solid #303947;border-radius:11px;
+    padding:12px;margin-bottom:11px
+  }
+  section:last-child{margin-bottom:0}
+  section h3{font-size:13px;margin:0 0 10px}
+  label{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+  input,select,button{
+    width:100%;background:#11161d;color:var(--text);border:1px solid #3a4553;
+    border-radius:8px;padding:9px
+  }
+  button{cursor:pointer;background:#29323e}
+  button:hover:not(:disabled){background:#34404e}
+  button.primary{background:#6a5720;border-color:#8c7430}
+  button.danger{background:#4a2427;border-color:#6d3438}
+  button:disabled{cursor:not-allowed;opacity:.48}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .small{font-size:12px;color:var(--muted);line-height:1.45}
+  .good{color:var(--good)}
+  .warning{color:#ffd98b}
+  .validation{min-height:17px;margin-top:6px;font-size:11px;color:#ff9a9a}
+  .miniStatus{font-size:11px;color:var(--good);min-height:16px;margin-top:6px}
+  .metric{
+    display:grid;grid-template-columns:1fr auto;gap:8px;font-size:12px;
+    padding:5px 0;border-bottom:1px solid rgba(255,255,255,.07)
+  }
+  .metric:last-child{border-bottom:0}
+  .metric span{color:#d3dae4;text-align:right}
+  .ruleList{margin:6px 0 0;padding-left:19px;font-size:13px;line-height:1.55}
+  .ruleList li{margin:6px 0}
+  #history{font-size:12px;max-height:160px;overflow:auto;padding-left:20px;margin-bottom:0}
+  #history li{margin:5px 0}
+
+  .timerBig{text-align:center;font-size:38px;font-weight:850;letter-spacing:1px;margin:3px 0 10px}
+  .milestones{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .milestone{
+    font-size:11px;padding:8px;border:1px solid #394350;border-radius:8px;
+    background:#171b21;color:#8f99a7
+  }
+  .milestone.unlocked{color:#baf6cf;border-color:#38654b;background:#17271e}
+  .milestone.next{color:#ffe391;border-color:#6d5b28;background:#292413}
+
+  .questionCard{position:relative}
+  .questionCard.locked{opacity:.64}
+  .lockNotice{
+    display:none;margin:0 0 9px;padding:8px;border-radius:8px;background:#171b21;
+    border:1px solid #3a4350;color:#ffd98b;font-size:12px
+  }
+  .questionCard.locked .lockNotice{display:block}
+
+  .toolActive{outline:2px solid var(--accent);background:#4b3f19!important}
+  .towerLegend{display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;border:1px solid rgba(255,255,255,.75)}
+
+  .scheduleGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .scheduleGrid label{margin-top:0}
+  .scheduleGrid input{margin-top:4px}
+  .presetBox{padding:10px;border:1px solid #394350;border-radius:9px;background:#171b21}
+  .presetBox strong{font-size:12px}
+  .summaryLine{font-size:12px;color:#dbe2ea;margin-top:7px}
+  .cooldownDisplay{
+    text-align:center;font-size:30px;font-weight:850;letter-spacing:.6px;margin:3px 0 5px
+  }
+  .cooldownDisplay.ready{color:#9ef1c2}
+  .cooldownDisplay.waiting{color:#ffe391}
+  .changeEntry{padding:11px;border:1px solid #394350;border-radius:9px;background:#171b21;margin-bottom:9px}
+  .changeEntry:last-child{margin-bottom:0}
+  .changeEntry h4{margin:0 0 6px;font-size:13px}
+  .changeEntry ul{margin:5px 0 0;padding-left:19px;font-size:12px;line-height:1.5;color:#d9e0e8}
+  .markerList{display:grid;gap:8px;margin:10px 0 8px}
+  .markerItem{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:8px 10px;border:1px solid #394350;border-radius:8px;background:#171b21
+  }
+  .markerLeft{display:flex;align-items:center;gap:8px;min-width:0}
+  .markerSwatch{width:14px;height:14px;border-radius:999px;border:1px solid rgba(255,255,255,.35);flex:0 0 auto}
+  .markerMeta{display:flex;flex-direction:column;min-width:0}
+  .markerMeta b{font-size:12px}
+  .markerMeta span{font-size:11px;color:#b5c0cb}
+  .markerButtons{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .markerBadge{
+    font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 6px;border-radius:999px;
+    border:1px solid #47607a;background:#1a2530;color:#b9ddff
+  }
+  .tinyBtn{
+    appearance:none;border:1px solid #475464;background:#222933;color:#eef5fb;
+    padding:6px 8px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer
+  }
+  .tinyBtn:hover{background:#2a3340}
+
+  #roomTopStatus{
+    flex:0 0 auto;font-size:11px;font-weight:800;letter-spacing:.5px;color:#9da7b4;
+    border:1px solid #394350;background:#171b21;border-radius:999px;padding:5px 8px
+  }
+  #roomTopStatus.connected{color:#baf6cf;border-color:#38654b;background:#17271e}
+  .roomStatus{
+    margin-bottom:10px;padding:8px 10px;border:1px solid #394350;border-radius:9px;
+    background:#171b21;color:#cbd3dd;font-size:12px;line-height:1.4
+  }
+  .roomStatus.good{color:#baf6cf;border-color:#38654b;background:#17271e}
+  .roomStatus.warning{color:#ffe391;border-color:#6d5b28;background:#292413}
+  .roomStatus.error{color:#ffb5b5;border-color:#6d3438;background:#2b1719}
+  .roomSetupNotice{display:none;margin-bottom:10px;padding:9px;border-radius:9px;border:1px solid #6d5b28;background:#292413;color:#ffe391;font-size:12px;line-height:1.45}
+  .roomJoinCode{text-transform:uppercase;letter-spacing:2px;font-weight:800;text-align:center}
+  .roomCodeHero{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px;
+    border:1px solid #435064;border-radius:10px;background:#151b22
+  }
+  .roomCodeValue{font-size:26px;font-weight:900;letter-spacing:4px;color:#ffe58b}
+  .roomCodeHero button{width:auto;padding:7px 10px}
+  .roomMemberList{display:grid;gap:7px;margin-top:9px}
+  .roomMember{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border:1px solid #394350;border-radius:8px;background:#171b21}
+  .roomMemberName{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0}
+  .roomMemberName b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .roomMemberBadges{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .roomBadge{font-size:9px;font-weight:850;letter-spacing:.5px;padding:3px 5px;border-radius:999px;border:1px solid #475464;color:#d9e0e8;background:#202731}
+  .roomBadge.seeker{border-color:#4e6480;color:#cbe3ff;background:#172535}
+  .roomBadge.hider{border-color:#6e4f7d;color:#efceff;background:#281b30}
+  .roomBadge.host{border-color:#79642d;color:#ffe391;background:#2b2514}
+
+  @media(max-width:900px){
+    #topbar{gap:8px;padding:0 8px}
+    #brand{display:none}
+    #tabs{overflow-x:auto}
+    .tabBtn{padding:7px 9px}
+    #topTimerSub{display:none}
+    #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
+    .mapToolBtn{width:40px;height:40px;min-width:40px}
+    #waypointNamePopover{left:50px;width:170px}
+    #panel{left:8px;right:8px;top:8px;width:auto;max-height:calc(100% - 16px)}
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="brand">BIG WALK HIDE + SEEK</div>
+  <div id="tabs">
+    <button class="tabBtn" data-tab="room">Room</button>
+    <button class="tabBtn active" data-tab="game">Game</button>
+    <button class="tabBtn" data-tab="tools">Map Tools</button>
+    <button class="tabBtn" data-tab="questions">Questions</button>
+    <button class="tabBtn" data-tab="rules">Rules</button>
+    <button class="tabBtn" data-tab="settings">Settings</button>
+    <button class="tabBtn" data-tab="changelog">Changelog</button>
+  </div>
+  <div id="roomTopStatus">Offline</div>
+  <div id="topTimer">
+    <div>
+      <div id="topTimerClock">00:00</div>
+      <div id="topTimerSub">Match not started</div>
+    </div>
+  </div>
+</div>
+
+<div id="updateBanner">
+  <span id="updateBannerText">A newer version is available.</span>
+  <button id="reloadLatestBtn">Reload latest</button>
+</div>
+
+<div id="app">
+  <div id="mapPane">
+    <div id="stage">
+      <img id="mapImage" src="../big-walk-map.png" alt="">
+      <canvas id="mapCanvas"></canvas>
+    </div>
+    <div id="coordTip">Y —, X —</div>
+    <div id="mapToolDock" role="toolbar" aria-label="Map interaction tools">
+      <button id="panModeBtn" class="mapToolBtn toolActive" type="button" title="Pan / inspect" aria-label="Pan / inspect" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M8 11V6a2 2 0 0 1 4 0v4"/>
+          <path d="M12 10V5a2 2 0 0 1 4 0v6"/>
+          <path d="M16 11V7a2 2 0 0 1 4 0v6c0 5-3 8-8 8h-1c-3 0-5-1-7-4l-2-3a2 2 0 0 1 3-2l3 2V8a2 2 0 0 1 4 0"/>
+        </svg>
+      </button>
+      <button id="placeModeBtn" class="mapToolBtn" type="button" title="Add marker" aria-label="Add marker" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 12 12 21 3 12Z"/></svg>
+      </button>
+      <button id="rulerModeBtn" class="mapToolBtn" type="button" title="Distance + bearing ruler" aria-label="Distance + bearing ruler" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="7" width="18" height="10" rx="2"/>
+          <path d="M7 7v4M11 7v2.5M15 7v4M19 7v2.5"/>
+        </svg>
+      </button>
+      <div id="waypointNamePopover">
+        <input id="waypointNameInput" type="text" maxlength="40" autocomplete="off" placeholder="Waypoint name (optional)" aria-label="Waypoint name">
+      </div>
+    </div>
+  </div>
+
+  <div id="panel">
+
+    <div id="view-room" class="panelView">
+      <div class="panelHeader"><h2>Room <span class="small">v1.2.0 preview</span></h2><button class="closePanel">Hide</button></div>
+      <div id="roomStatus" class="roomStatus">Initializing room service…</div>
+      <div id="roomSetupNotice" class="roomSetupNotice">Rooms need a Firebase Realtime Database project before they can connect across devices. Follow <b>ROOMS_SETUP.md</b> in the repo, then add the Firebase web config to <b>firebase-config.js</b>.</div>
+
+      <div id="roomDisconnected">
+        <section>
+          <h3>Your room identity</h3>
+          <label>Display name</label>
+          <input id="roomPlayerName" type="text" maxlength="28" autocomplete="nickname" placeholder="e.g. Xypher">
+          <label>Role</label>
+          <select id="roomRoleSelect">
+            <option value="seeker">Seeker</option>
+            <option value="hider">Hider</option>
+          </select>
+          <p class="small">Roles only control shared match tools in this first room build. Hider position is not uploaded or revealed.</p>
+        </section>
+        <section>
+          <h3>Create a room</h3>
+          <button id="createRoomBtn" class="primary">Create room</button>
+          <p class="small">Creates a six-character room code and makes you the room host.</p>
+        </section>
+        <section>
+          <h3>Join a room</h3>
+          <input id="roomJoinCode" class="roomJoinCode" type="text" maxlength="6" autocomplete="off" placeholder="ABC123" aria-label="Room code">
+          <button id="joinRoomBtn" style="margin-top:8px">Join room</button>
+        </section>
+      </div>
+
+      <div id="roomConnected" style="display:none">
+        <section>
+          <h3>Current room</h3>
+          <div class="roomCodeHero">
+            <div id="currentRoomCode" class="roomCodeValue">—</div>
+            <button id="copyRoomCodeBtn">Copy code</button>
+          </div>
+          <div class="metric" style="margin-top:8px"><b>Your role</b><span id="currentRoomRole">—</span></div>
+          <div class="metric"><b>Host</b><span id="currentRoomHost">—</span></div>
+          <p id="roomHostControlsNote" class="small"></p>
+        </section>
+        <section>
+          <h3>Players</h3>
+          <div id="roomMemberList" class="roomMemberList"></div>
+        </section>
+        <section>
+          <h3>Shared in this preview</h3>
+          <p class="small">Match timer, pause/reset state, question unlock schedule, global question cooldown, question history, and search-area constraints sync across the room. Markers and live player position stay local.</p>
+          <button id="leaveRoomBtn" class="danger">Leave room</button>
+        </section>
+      </div>
+    </div>
+
+    <div id="view-game" class="panelView active">
+      <div class="panelHeader"><h2>Game</h2><button class="closePanel">Hide</button></div>
+
+      <section>
+        <h3>Match timer</h3>
+        <div class="timerBig" id="matchTimer">00:00</div>
+        <div class="row">
+          <button class="primary" id="startMatchBtn">Start match</button>
+          <button id="pauseMatchBtn" disabled>Pause</button>
+        </div>
+        <button class="danger" id="resetMatchBtn" style="margin-top:8px">Reset match</button>
+        <div id="timerStatus" class="miniStatus">Start the match to begin the unlock schedule.</div>
+      </section>
+
+      <section>
+        <h3>Question unlocks</h3>
+        <div class="milestones">
+          <div id="msGrid" class="milestone">10:00 · Gridline</div>
+          <div id="msNearest" class="milestone">20:00 · Nearest tower</div>
+          <div id="msTowerRadius" class="milestone">30:00 · Tower radius</div>
+          <div id="msLandmark" class="milestone">40:00 · Landmark questions</div>
+          <div id="msMarker" class="milestone">50:00 · Marker questions</div>
+        </div>
+      </section>
+
+    </div>
+
+    <div id="view-tools" class="panelView">
+      <div class="panelHeader"><h2>Map Tools</h2><button class="closePanel">Hide</button></div>
+
+      <section>
+        <h3>Live game location</h3>
+        <div class="metric"><b>Status</b><span id="liveLocationStatus">Disconnected</span></div>
+        <div class="metric"><b>Game coordinates</b><span id="liveLocationCoords">—</span></div>
+        <div class="metric"><b>Altitude</b><span id="liveLocationAltitude">—</span></div>
+        <div class="row" style="margin-top:9px">
+          <button id="liveLocationBtn" class="primary">Connect live location</button>
+        </div>
+        <div id="liveLocationMessage" class="miniStatus"></div>
+        <p class="small">Requires BigWalkLivePosition v0.2.1 running in your modded game. The site reads only your local player position from 127.0.0.1. On the hosted site, your browser may ask for permission to access the loopback/local network.</p>
+      </section>
+
+      <section>
+        <h3>Place marker by coordinates</h3>
+        <label>Coordinates (Y, X)</label>
+        <input id="coordinateEntry" type="text" placeholder="e.g. 3937, 1908">
+        <button id="placeCoordinatesBtn" class="primary" style="margin-top:8px">Add marker</button>
+        <div id="coordinateEntryValidation" class="validation"></div>
+        <p class="small">Accepts formats like <b>3937, 1908</b>, <b>3937 1908</b>, or <b>Y3937 X1908</b>.</p>
+      </section>
+
+      <section>
+        <h3>Markers</h3>
+        <div id="markerEmpty" class="small" style="margin-top:10px">No markers placed yet.</div>
+        <div id="markerList" class="markerList"></div>
+        <div id="markerInfo" style="display:none">
+          <div class="metric"><b>Active marker</b><span id="markerLabel">—</span></div>
+          <div class="metric"><b>Coordinates</b><span id="markerCoords">—</span></div>
+          <div class="metric"><b>Grid square</b><span id="markerGrid">—</span></div>
+          <div class="metric"><b>Nearest tower</b><span id="markerNearest">—</span></div>
+          <div class="metric"><b>Tower distance</b><span id="markerTowerDistance">—</span></div>
+          <div class="metric"><b>Tower direction</b><span id="markerTowerBearing">—</span></div>
+          <div class="row" style="margin-top:9px">
+            <button id="copyMarkerBtn">Copy active marker</button>
+            <button id="clearMarkerBtn">Remove active</button>
+            <button id="clearAllMarkersBtn">Clear all</button>
+          </div>
+          <div id="copyStatus" class="miniStatus"></div>
+        </div>
+      </section>
+
+      <section>
+        <h3>Nearest-tower helper</h3>
+        <button id="towerRegionsBtn">Show tower regions</button>
+        <p class="small">Shows which tower is geometrically closest from every point on the map.</p>
+      </section>
+
+      <section>
+        <h3>Distance + bearing</h3>
+        <div id="rulerEmpty" class="small">Choose ruler mode, then click two points.</div>
+        <div id="rulerInfo" style="display:none">
+          <div class="metric"><b>Point A</b><span id="rulerA">—</span></div>
+          <div class="metric"><b>Point B</b><span id="rulerB">—</span></div>
+          <div class="metric"><b>Distance</b><span id="rulerDistance">—</span></div>
+          <div class="metric"><b>Bearing A → B</b><span id="rulerBearing">—</span></div>
+          <div class="row" style="margin-top:9px">
+            <button id="copyRulerBtn">Copy A/B</button>
+            <button id="clearRulerBtn">Clear ruler</button>
+          </div>
+          <div id="rulerCopyStatus" class="miniStatus"></div>
+        </div>
+      </section>
+    </div>
+
+    <div id="view-questions" class="panelView">
+      <div class="panelHeader"><h2>Questions</h2><button class="closePanel">Hide</button></div>
+
+      <section>
+        <h3>Global question cooldown</h3>
+        <div id="questionCooldownClock" class="cooldownDisplay ready">READY</div>
+        <div id="questionCooldownStatus" class="small">Once a question is answered, all unlocked questions lock for 5 minutes.</div>
+      </section>
+
+      <section id="gridQuestionSection" class="questionCard locked">
+        <h3>Gridline</h3>
+        <div class="lockNotice" id="gridLockNotice">Locked.</div>
+        <label>Axis</label>
+        <select id="axis">
+          <option value="y">North / South (Y)</option>
+          <option value="x">West / East (X)</option>
+        </select>
+        <label>Coordinate</label>
+        <input id="splitValue" type="number" step="100" value="3800">
+        <p class="small">Legal central gridlines only: <b>X 15–19</b> or <b>Y 36–40</b>.</p>
+        <label>Hider's answer</label>
+        <select id="splitAnswer">
+          <option value="low">North / West</option>
+          <option value="high">South / East</option>
+        </select>
+        <button class="primary" id="applySplit">Apply answer</button>
+        <div id="splitValidation" class="validation"></div>
+      </section>
+
+      <section id="nearestQuestionSection" class="questionCard locked">
+        <h3>Nearest tower</h3>
+        <div class="lockNotice" id="nearestLockNotice">Locked.</div>
+        <label>Hider's nearest tower</label>
+        <select id="nearestTower"></select>
+        <button class="primary" id="applyNearest">Apply answer</button>
+      </section>
+
+      <section id="towerRadiusQuestionSection" class="questionCard locked">
+        <h3>Tower radius</h3>
+        <div class="lockNotice" id="towerRadiusLockNotice">Locked.</div>
+        <label>Tower</label>
+        <select id="radarTower"></select>
+        <label>Radius (game units)</label>
+        <input id="radarRadius" type="number" min="250" step="50" value="500">
+        <p class="small">Minimum legal radius: <b>250 units</b>.</p>
+        <label>Hider's answer</label>
+        <select id="radarAnswer">
+          <option value="inside">Yes, within radius</option>
+          <option value="outside">No, outside radius</option>
+        </select>
+        <button class="primary" id="applyRadar">Apply answer</button>
+        <div id="radarValidation" class="validation"></div>
+      </section>
+
+      <section id="landmarkQuestionSection" class="questionCard locked">
+        <h3>Landmark</h3>
+        <div class="lockNotice" id="landmarkLockNotice">Locked.</div>
+        <label>Question type</label>
+        <select id="landmarkQuestionType">
+          <option value="nearest">Nearest landmark</option>
+          <option value="radius">Landmark radius</option>
+        </select>
+
+        <div id="landmarkNearestFields">
+          <label>Hider's nearest landmark</label>
+          <select id="nearestLandmark"></select>
+        </div>
+
+        <div id="landmarkRadiusFields" style="display:none">
+          <label>Landmark</label>
+          <select id="landmarkRadiusLandmark"></select>
+          <label>Radius (game units)</label>
+          <input id="landmarkRadius" type="number" min="150" step="25" value="300">
+          <p class="small">Minimum legal radius: <b>150 units</b>.</p>
+          <label>Hider's answer</label>
+          <select id="landmarkRadiusAnswer">
+            <option value="inside">Yes, within radius</option>
+            <option value="outside">No, outside radius</option>
+          </select>
+        </div>
+
+        <button class="primary" id="applyLandmarkQuestion">Apply answer</button>
+        <div id="landmarkQuestionValidation" class="validation"></div>
+      </section>
+
+      <section id="markerQuestionSection" class="questionCard locked">
+        <h3>From active marker</h3>
+        <div class="lockNotice" id="markerLockNotice">Locked.</div>
+        <p class="small">Uses the current <b>active</b> marker as the seeker reference point.</p>
+        <label>Question type</label>
+        <select id="markerQuestionType">
+          <option value="distance">Distance from my marker</option>
+          <option value="direction">Compass direction from my marker</option>
+        </select>
+
+        <div id="markerDistanceFields">
+          <label>Radius (game units)</label>
+          <input id="markerRadius" type="number" min="250" step="50" value="500">
+          <label>Hider's answer</label>
+          <select id="markerDistanceAnswer">
+            <option value="inside">Yes, within radius</option>
+            <option value="outside">No, outside radius</option>
+          </select>
+        </div>
+
+        <div id="markerDirectionFields" style="display:none">
+          <label>Hider's direction from my marker</label>
+          <select id="markerDirectionAnswer">
+            <option value="N">North</option>
+            <option value="E">East</option>
+            <option value="S">South</option>
+            <option value="W">West</option>
+          </select>
+          <p class="small">Direction answers use four broad compass sectors: north, east, south, or west.</p>
+        </div>
+
+        <button class="primary" id="applyMarkerQuestion">Apply answer</button>
+        <div id="markerQuestionValidation" class="validation"></div>
+      </section>
+
+      <section>
+        <h3>Question history</h3>
+        <ol id="history"></ol>
+        <div class="row" style="margin-top:10px">
+          <button id="undoBtn">Undo question</button>
+          <button class="danger" id="clearQuestionsBtn">Clear questions</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="view-rules" class="panelView">
+      <div class="panelHeader"><h2>Rules</h2><button class="closePanel">Hide</button></div>
+
+      <section>
+        <h3>Hiders</h3>
+        <ul class="ruleList">
+          <li>No hiding behind the giant wall.</li>
+          <li>No hiding inside the tunnel system.</li>
+          <li>No hiding on the chairlift or train.</li>
+          <li>No moving after setting your hiding spot.</li>
+          <li>All hiding spots must be accessible by foot.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Current question schedule</h3>
+        <div class="metric"><b>Gridline</b><span id="ruleGridTime">10:00</span></div>
+        <div class="metric"><b>Nearest tower</b><span id="ruleNearestTime">20:00</span></div>
+        <div class="metric"><b>Tower radius</b><span id="ruleTowerRadiusTime">30:00</span></div>
+        <div class="metric"><b>Landmark questions</b><span id="ruleLandmarkTime">40:00</span></div>
+        <div class="metric"><b>Marker questions</b><span id="ruleMarkerTime">50:00</span></div>
+        <div class="metric"><b>Question cooldown</b><span id="ruleCooldownTime">05:00</span></div>
+        <p class="small">The site automatically enforces both unlock times and the global question cooldown.</p>
+      </section>
+    </div>
+
+    <div id="view-settings" class="panelView">
+      <div class="panelHeader"><h2>Settings</h2><button class="closePanel">Hide</button></div>
+
+      <section>
+        <h3>Question timing</h3>
+        <div class="presetBox">
+          <strong>Quick schedule builder</strong>
+          <div class="scheduleGrid" style="margin-top:9px">
+            <label>First question after (min)
+              <input id="firstUnlockMinutes" type="number" min="0" step="1" value="10">
+            </label>
+            <label>Minutes between unlocks
+              <input id="unlockIntervalMinutes" type="number" min="1" step="1" value="10">
+            </label>
+          </div>
+          <button id="buildScheduleBtn" style="margin-top:8px">Build evenly spaced schedule</button>
+          <p class="small">Example: first question at 5 minutes + 15-minute interval creates unlocks at 5, 20, 35, 50, and 65 minutes.</p>
+        </div>
+
+        <label style="margin-top:12px">Individual unlock times (minutes)</label>
+        <div class="scheduleGrid">
+          <label>Gridline
+            <input id="gridUnlockMinutes" type="number" min="0" step="1" value="10">
+          </label>
+          <label>Nearest tower
+            <input id="nearestUnlockMinutes" type="number" min="0" step="1" value="20">
+          </label>
+          <label>Tower radius
+            <input id="towerRadiusUnlockMinutes" type="number" min="0" step="1" value="30">
+          </label>
+          <label>Landmark questions
+            <input id="landmarkUnlockMinutes" type="number" min="0" step="1" value="40">
+          </label>
+          <label>Marker questions
+            <input id="markerUnlockMinutes" type="number" min="0" step="1" value="50">
+          </label>
+        </div>
+        <label style="margin-top:12px">Global question cooldown (minutes)</label>
+        <input id="questionCooldownMinutes" type="number" min="0.25" step="0.25" value="5">
+        <p class="small">Default is 5 minutes. This applies to future questions.</p>
+
+        <button class="primary" id="applyScheduleBtn" style="margin-top:8px">Apply timing settings</button>
+        <div id="scheduleValidation" class="validation"></div>
+        <div id="scheduleSummary" class="summaryLine"></div>
+      </section>
+
+      <section>
+        <h3>Map display</h3>
+        <div class="row">
+          <button id="fitBtn">Fit map</button>
+          <button id="gridBtn">Hide grid</button>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button id="towerBtn">Hide towers</button>
+          <button id="landmarkBtn">Hide landmarks</button>
+        </div>
+      </section>
+
+      <section>
+        <h3>Development / testing</h3>
+        <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>
+        <p class="small">Does not change the match timer.</p>
+      </section>
+
+      <section>
+        <h3>Tower data</h3>
+        <div class="towerLegend" id="towerLegend"></div>
+      </section>
+
+      <section>
+        <h3>Landmark data</h3>
+        <div class="towerLegend" id="landmarkLegend"></div>
+      </section>
+    </div>
+
+    <div id="view-changelog" class="panelView">
+      <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
+
+      <div class="changeEntry">
+        <h4>v1.1.4 — Waypoint naming + settings cleanup</h4>
+        <ul>
+          <li>Waypoint names are now entered from a compact field directly beneath the diamond placement tool.</li>
+          <li>Removed the old marker-name textbox from the Map Tools sidebar.</li>
+          <li>Removed the Calibration Debug toggle and Calibration settings section.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.1.3 — Floating toolbar click fix</h4>
+        <ul>
+          <li>Fixed the floating toolbar being stuck on Pan / inspect.</li>
+          <li>Toolbar pointer events no longer get captured by the underlying map pane.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.1.2 — Floating map tools</h4>
+        <ul>
+          <li>Moved Pan / inspect, Add marker, and Distance + bearing ruler out of the Map Tools panel.</li>
+          <li>Added a compact floating icon toolbar on the map using hand, diamond, and ruler icons.</li>
+          <li>The active interaction tool remains highlighted and each icon has an accessible tooltip/label.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.1.1 — Map display toggles</h4>
+        <ul>
+          <li>Added a dedicated landmark visibility toggle in Settings → Map display.</li>
+          <li>Towers and landmarks can now be hidden or shown independently.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.1.0 — Hosted website support</h4>
+        <ul>
+          <li>Prepared the app for static hosting on GitHub Pages.</li>
+          <li>Added hosted-site loopback/local-network handling for the live-position plugin.</li>
+          <li>Added update detection: if a newer deployed version exists, the site can prompt you to reload it.</li>
+          <li>Added version.json and .nojekyll for straightforward static deployment.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.0.2 — Live game location</h4>
+        <ul>
+          <li>Added direct connection to the BigWalkLivePosition localhost bridge.</li>
+          <li>A LIVE YOU marker now follows the player's in-game position automatically.</li>
+          <li>The live marker can be used as the active reference for marker-based questions.</li>
+          <li>Live status, Big Walk Y/X, and altitude are shown in Map Tools.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.0.1 — First-launch map fix</h4>
+        <ul>
+          <li>Fixed a local-file startup race where the map image could finish loading before the app attached its load handler.</li>
+          <li>The app now initializes correctly whether the map image is already cached or loads normally.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v1.0 — Landmarks + multi-marker support</h4>
+        <ul>
+          <li>Added two landmarks: Purple Tunnel and Microphone.</li>
+          <li>Added landmark questions: nearest landmark and landmark radius.</li>
+          <li>Added a separate landmark unlock timing (default 40 minutes).</li>
+          <li>Markers now support multiple saved positions at once.</li>
+          <li>You can set an active marker, remove one marker, or clear them all.</li>
+          <li>Marker-based questions now use the active marker.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.9 — Question pacing</h4>
+        <ul>
+          <li>Added a global question cooldown, defaulting to 5 minutes.</li>
+          <li>After any successful answer, all unlocked questions lock until the cooldown expires.</li>
+          <li>Undoing the most recent question immediately reverses that cooldown.</li>
+          <li>Cooldown duration is configurable in Settings.</li>
+          <li>Added this Changelog tab for future versions.</li>
+          <li>Kept the default unlock schedule at 10 / 20 / 30 / 50 minutes.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.8 — Direction experiment</h4>
+        <ul>
+          <li>Briefly tested straight half-map cardinal cuts for marker-direction questions.</li>
+          <li>Superseded in v0.9; the intended broad compass-sector behavior is retained.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.7 — Coordinate entry + question cleanup</h4>
+        <ul>
+          <li>Added manual Y,X marker placement.</li>
+          <li>Reduced marker-direction choices to N / E / S / W.</li>
+          <li>Moved question history, Undo, and Clear to the Questions tab.</li>
+          <li>Tightened gridline questions to X15–19 and Y36–40.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.6 — UI redesign</h4>
+        <ul>
+          <li>Moved to a full-screen map with top navigation tabs and floating panels.</li>
+          <li>Added customizable question unlock timings.</li>
+          <li>Removed duplicate top-left map HUD readouts.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.5 — Match system</h4>
+        <ul>
+          <li>Added the match timer and staged question unlocks.</li>
+          <li>Added the Rules tab and marker-based late-game questions.</li>
+          <li>Added grid/radius validation and the 250-unit minimum radius.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.4 — Navigation tools</h4>
+        <ul>
+          <li>Added the YOU marker, nearest-tower helper, distance/bearing ruler, and copy tools.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.3 — Map inspection</h4>
+        <ul>
+          <li>Added live coordinates beside the cursor and improved calibration debugging.</li>
+        </ul>
+      </div>
+
+      <div class="changeEntry">
+        <h4>v0.2 — Calibration</h4>
+        <ul>
+          <li>Added the five-tower affine calibration that aligns game coordinates to the map.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const APP_VERSION="1.1.4";
+const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
+
+const towers = {
+  Red:    {x:1405,y:3669,color:"#e45a54"},
+  Yellow: {x:1571,y:3306,color:"#f2bd2e"},
+  Green:  {x:1908,y:3937,color:"#37b487"},
+  Black:  {x:1676,y:3482,color:"#202024"},
+  Blue:   {x:1853,y:3542,color:"#268fd0"}
+};
+
+const landmarks = {
+  "Purple Tunnel": {x:1897,y:4286,color:"#9b5de5"},
+  "Microphone": {x:1235,y:3408,color:"#ff4fa3"}
+};
+
+const T = {
+  a: 1.01872096, b: 0.00000814424539, c: -934.160388,
+  d: -0.00223877926, e: 1.01939961, f: -3130.54945
+};
+const det = T.a*T.e - T.b*T.d;
+const TI = {a:T.e/det,b:-T.b/det,d:-T.d/det,e:T.a/det};
+TI.c = -(TI.a*T.c + TI.b*T.f);
+TI.f = -(TI.d*T.c + TI.e*T.f);
+
+const img=document.getElementById("mapImage");
+const canvas=document.getElementById("mapCanvas");
+const ctx=canvas.getContext("2d");
+const pane=document.getElementById("mapPane");
+const stage=document.getElementById("stage");
+const coordTip=document.getElementById("coordTip");
+const panel=document.getElementById("panel");
+
+let activeTab="game", panelVisible=true;
+let showGrid=true, showTowers=true, showLandmarks=true, showTowerRegions=false;
+let constraints=[], historyText=[];
+let view={scale:1,ox:0,oy:0};
+let dragging=false,last={x:0,y:0},pointerDownPos=null,movedSinceDown=false;
+let toolMode="pan";
+let playerMarkers=[], activeMarkerId=null, nextMarkerId=1, rulerA=null, rulerB=null;
+let liveMarker=null, liveLocationEnabled=false, liveLocationTimer=null, liveLocationFailures=0;
+const markerPalette=["#ffffff","#ffca3a","#8ac926","#4cc9f0","#ff595e","#c77dff","#2ec4b6","#f4a261"];
+
+let unlockTimes={grid:600,nearest:1200,towerRadius:1800,landmark:2400,marker:3000};
+let questionCooldownSeconds=300;
+let questionCooldownUntil=0;
+let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
+let testingUnlockOverride=false;
+
+const panModeBtn=document.getElementById("panModeBtn");
+const placeModeBtn=document.getElementById("placeModeBtn");
+const rulerModeBtn=document.getElementById("rulerModeBtn");
+const waypointNamePopover=document.getElementById("waypointNamePopover");
+const waypointNameInput=document.getElementById("waypointNameInput");
+
+function mapToPixel(x,y){return {x:T.a*x+T.b*y+T.c,y:T.d*x+T.e*y+T.f};}
+function pixelToMap(px,py){return {x:TI.a*px+TI.b*py+TI.c,y:TI.d*px+TI.e*py+TI.f};}
+
+function fitMap(){
+  const s=Math.min(pane.clientWidth/canvas.width,pane.clientHeight/canvas.height);
+  view.scale=s;
+  view.ox=(pane.clientWidth-canvas.width*s)/2;
+  view.oy=(pane.clientHeight-canvas.height*s)/2;
+  applyTransform();
+}
+function applyTransform(){
+  canvas.style.transformOrigin="0 0";
+  canvas.style.transform=`translate(${view.ox}px,${view.oy}px) scale(${view.scale})`;
+}
+function eventToCanvas(e){
+  const r=pane.getBoundingClientRect();
+  return {x:(e.clientX-r.left-view.ox)/view.scale,y:(e.clientY-r.top-view.oy)/view.scale};
+}
+
+function nearestTowerAt(x,y){
+  let best=null,bestD=Infinity;
+  for(const [name,t] of Object.entries(towers)){
+    const d=Math.hypot(x-t.x,y-t.y);
+    if(d<bestD){bestD=d;best=name;}
+  }
+  return {name:best,distance:bestD,tower:towers[best]};
+}
+function nearestLandmarkAt(x,y){
+  let best=null,bestD=Infinity;
+  for(const [name,t] of Object.entries(landmarks)){
+    const d=Math.hypot(x-t.x,y-t.y);
+    if(d<bestD){bestD=d;best=name;}
+  }
+  return {name:best,distance:bestD,landmark:landmarks[best]};
+}
+function getActiveMarker(){
+  if(activeMarkerId==="live" && liveMarker)return liveMarker;
+  return playerMarkers.find(m=>m.id===activeMarkerId) || null;
+}
+function allMarkers(){
+  return liveMarker ? [liveMarker,...playerMarkers] : [...playerMarkers];
+}
+function markerDisplayName(m){
+  return m?.label || `Marker ${m?.id ?? ""}`.trim();
+}
+function addMarker(x,y,label){
+  const marker={
+    id:nextMarkerId++,
+    x,y,
+    label:(label||"").trim() || `Marker ${nextMarkerId-1}`,
+    color:markerPalette[(nextMarkerId-2)%markerPalette.length]
+  };
+  playerMarkers.push(marker);
+  activeMarkerId=marker.id;
+  updateMarkerPanel();updateQuestionLocks();draw();
+}
+function removeMarker(id){
+  playerMarkers=playerMarkers.filter(m=>m.id!==id);
+  if(activeMarkerId===id) activeMarkerId=playerMarkers.length ? playerMarkers[playerMarkers.length-1].id : null;
+  updateMarkerPanel();updateQuestionLocks();draw();
+}
+function bearingInfo(x1,y1,x2,y2){
+  const dx=x2-x1,dy=y2-y1;
+  let deg=(Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+  const dirs=["N","NE","E","SE","S","SW","W","NW"];
+  return {deg,dir:dirs[Math.round(deg/45)%8]};
+}
+function cardinalDirection4(x1,y1,x2,y2){
+  const b=bearingInfo(x1,y1,x2,y2);
+  const dirs=["N","E","S","W"];
+  return {deg:b.deg,dir:dirs[Math.round(b.deg/90)%4]};
+}
+function gridSquare(x,y){return `X ${Math.floor(x/100)} / Y ${Math.floor(y/100)}`;}
+function formatYX(p){return `Y ${Math.round(p.y)}, X ${Math.round(p.x)}`;}
+function parseYXCoordinates(text){
+  const nums=(text.match(/-?\d+(?:\.\d+)?/g)||[]).map(Number);
+  if(nums.length<2||!Number.isFinite(nums[0])||!Number.isFinite(nums[1]))return null;
+  return {y:nums[0],x:nums[1]};
+}
+function coordinateLooksOnMap(p){
+  const px=mapToPixel(p.x,p.y);
+  return px.x>=0&&px.y>=0&&px.x<=canvas.width&&px.y<=canvas.height;
+}
+function formatTime(totalSeconds){
+  totalSeconds=Math.max(0,Math.floor(totalSeconds));
+  const m=Math.floor(totalSeconds/60),s=totalSeconds%60;
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+}
+
+function showTab(name){
+  activeTab=name;
+  panelVisible=true;
+  panel.style.display="block";
+  document.querySelectorAll(".panelView").forEach(v=>v.classList.remove("active"));
+  document.getElementById(`view-${name}`).classList.add("active");
+  document.querySelectorAll(".tabBtn").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
+}
+function hidePanel(){panelVisible=false;panel.style.display="none";document.querySelectorAll(".tabBtn").forEach(b=>b.classList.remove("active"));}
+
+function setToolMode(mode){
+  toolMode=mode;
+  panModeBtn.classList.toggle("toolActive",mode==="pan");
+  placeModeBtn.classList.toggle("toolActive",mode==="place");
+  rulerModeBtn.classList.toggle("toolActive",mode==="ruler");
+  panModeBtn.setAttribute("aria-pressed",String(mode==="pan"));
+  placeModeBtn.setAttribute("aria-pressed",String(mode==="place"));
+  rulerModeBtn.setAttribute("aria-pressed",String(mode==="ruler"));
+  waypointNamePopover.style.display=mode==="place"?"block":"none";
+  stage.style.cursor=mode==="pan"?"grab":"crosshair";
+}
+
+let roomApplyingRemoteState=false;
+function roomModeConnected(){return !!window.BigWalkRooms?.isConnected?.();}
+function roomCanEditSharedGame(){return !roomModeConnected() || !!window.BigWalkRooms?.canEditSharedGame?.();}
+function notifyRoomGameStateChanged(){
+  if(roomApplyingRemoteState||!roomModeConnected())return;
+  Promise.resolve(window.BigWalkRooms?.pushGameState?.()).catch(err=>console.warn("Room state sync failed",err));
+}
+function syncMatchControlButtons(){
+  const connected=roomModeConnected();
+  const canControl=!connected || !!window.BigWalkRooms?.canControlMatch?.();
+  const start=document.getElementById("startMatchBtn"),pause=document.getElementById("pauseMatchBtn"),reset=document.getElementById("resetMatchBtn");
+  const elapsed=currentMatchSeconds();
+  if(matchRunning){
+    start.textContent="Running";start.disabled=true;pause.disabled=!canControl;
+  }else if(elapsed>0.01){
+    start.textContent="Resume";start.disabled=!canControl;pause.disabled=true;
+  }else{
+    start.textContent="Start match";start.disabled=!canControl;pause.disabled=true;
+  }
+  reset.disabled=connected&&!canControl;
+}
+window.BigWalkRoomBridge={
+  getSharedGameState(){
+    return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},questionCooldownSeconds:Number(questionCooldownSeconds||300)};
+  },
+  applySharedRoomState(state){
+    roomApplyingRemoteState=true;
+    try{
+      const game=state?.game||{};
+      constraints=Array.isArray(game.constraints)?JSON.parse(JSON.stringify(game.constraints)):[];
+      historyText=Array.isArray(game.historyText)?[...game.historyText]:[];
+      questionCooldownUntil=Number(game.questionCooldownUntil||0);
+      if(game.unlockTimes && typeof game.unlockTimes==="object"){
+        unlockTimes={grid:Number(game.unlockTimes.grid??unlockTimes.grid),nearest:Number(game.unlockTimes.nearest??unlockTimes.nearest),towerRadius:Number(game.unlockTimes.towerRadius??unlockTimes.towerRadius),landmark:Number(game.unlockTimes.landmark??unlockTimes.landmark),marker:Number(game.unlockTimes.marker??unlockTimes.marker)};
+      }
+      if(Number.isFinite(Number(game.questionCooldownSeconds))&&Number(game.questionCooldownSeconds)>0)questionCooldownSeconds=Number(game.questionCooldownSeconds);
+      const match=state?.match;
+      if(match){matchRunning=!!match.running;matchElapsedMs=Math.max(0,Number(match.elapsedMs||0));matchLastTick=null;}
+      updateScheduleInputs();renderMatchTimer();syncMatchControlButtons();
+      if(appInitialized)draw();
+    }finally{roomApplyingRemoteState=false;}
+  },
+  resetSharedGameForRoom(){
+    roomApplyingRemoteState=true;
+    try{
+      matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;
+      constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null;rulerB=null;
+      ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
+      updateMarkerPanel();updateRulerPanel();renderMatchTimer();syncMatchControlButtons();
+      if(appInitialized)draw();
+      return this.getSharedGameState();
+    }finally{roomApplyingRemoteState=false;}
+  },
+  setRoomControlAuthority(){syncMatchControlButtons();},
+  setRoomSharedEditAuthority(){updateQuestionLocks();},
+  onRoomDisconnected(finalSeconds){
+    if(Number.isFinite(Number(finalSeconds)))matchElapsedMs=Math.max(0,Number(finalSeconds)*1000);
+    matchRunning=false;matchLastTick=null;renderMatchTimer();syncMatchControlButtons();
+  }
+};
+
+function currentMatchSeconds(){
+  if(roomModeConnected()){
+    const shared=Number(window.BigWalkRooms?.getMatchSeconds?.());
+    if(Number.isFinite(shared))return Math.max(0,shared);
+  }
+  return matchElapsedMs/1000;
+}
+function questionUnlocked(seconds){return testingUnlockOverride || currentMatchSeconds()>=seconds;}
+function questionCooldownRemaining(){
+  if(testingUnlockOverride)return 0;
+  return Math.max(0,questionCooldownUntil-currentMatchSeconds());
+}
+function questionCooldownActive(){return questionCooldownRemaining()>0.01;}
+function startQuestionCooldown(){
+  if(testingUnlockOverride)return;
+  questionCooldownUntil=currentMatchSeconds()+questionCooldownSeconds;
+}
+function cancelQuestionCooldown(){
+  questionCooldownUntil=currentMatchSeconds();
+}
+function updateCooldownDisplay(){
+  const clock=document.getElementById("questionCooldownClock");
+  const status=document.getElementById("questionCooldownStatus");
+  const remain=questionCooldownRemaining();
+
+  clock.classList.remove("ready","waiting");
+  if(testingUnlockOverride){
+    clock.textContent="BYPASSED";
+    clock.classList.add("ready");
+    status.textContent="Testing override is active, so the global cooldown is ignored.";
+  }else if(remain>0){
+    clock.textContent=formatTime(remain);
+    clock.classList.add("waiting");
+    status.textContent="All unlocked questions are temporarily locked.";
+  }else{
+    clock.textContent="READY";
+    clock.classList.add("ready");
+    const anyUnlocked=Object.values(unlockTimes).some(t=>currentMatchSeconds()>=t);
+    status.textContent=anyUnlocked
+      ? `Choose any unlocked question. Answering it starts a ${formatTime(questionCooldownSeconds)} global cooldown.`
+      : "No question type is unlocked yet.";
+  }
+}
+function setSectionLocked(sectionId,unlockAt,noticeId){
+  const section=document.getElementById(sectionId);
+  const unlocked=questionUnlocked(unlockAt);
+  const cooldown=questionCooldownActive();
+  const roomReadOnly=roomModeConnected()&&!roomCanEditSharedGame();
+  const locked=!unlocked || cooldown || roomReadOnly;
+
+  section.classList.toggle("locked",locked);
+  section.querySelectorAll("input,select,button").forEach(el=>el.disabled=locked);
+
+  const notice=document.getElementById(noticeId);
+  if(!unlocked){
+    if(matchElapsedMs===0&&!matchRunning){
+      notice.textContent=`Locked until ${formatTime(unlockAt)} after the match starts.`;
+    }else{
+      const remain=Math.max(0,unlockAt-currentMatchSeconds());
+      notice.textContent=`Locked until ${formatTime(unlockAt)} · ${formatTime(remain)} remaining.`;
+    }
+  }else if(cooldown){
+    notice.textContent=`Global question cooldown · ${formatTime(questionCooldownRemaining())} remaining.`;
+  }else if(roomReadOnly){
+    notice.textContent="Shared room: only seekers (or the host) can submit questions.";
+  }
+}
+function updateQuestionLocks(){
+  setSectionLocked("gridQuestionSection",unlockTimes.grid,"gridLockNotice");
+  setSectionLocked("nearestQuestionSection",unlockTimes.nearest,"nearestLockNotice");
+  setSectionLocked("towerRadiusQuestionSection",unlockTimes.towerRadius,"towerRadiusLockNotice");
+  setSectionLocked("landmarkQuestionSection",unlockTimes.landmark,"landmarkLockNotice");
+  setSectionLocked("markerQuestionSection",unlockTimes.marker,"markerLockNotice");
+
+  const activeMarker=getActiveMarker();
+  if(questionUnlocked(unlockTimes.marker)&&!questionCooldownActive()&&!activeMarker){
+    document.getElementById("applyMarkerQuestion").disabled=true;
+    document.getElementById("markerQuestionValidation").textContent='Place at least one marker and set an active marker before asking a marker-based question.';
+  }else if(activeMarker && document.getElementById("markerQuestionValidation").textContent.includes("Place at least one")){
+    document.getElementById("markerQuestionValidation").textContent="";
+  }
+
+  updateCooldownDisplay();
+}
+function updateMilestones(){
+  const sec=currentMatchSeconds();
+  const list=[
+    ["msGrid","grid","Gridline"],["msNearest","nearest","Nearest tower"],
+    ["msTowerRadius","towerRadius","Tower radius"],["msLandmark","landmark","Landmark questions"],
+    ["msMarker","marker","Marker questions"]
+  ];
+  let nextFound=false;
+  for(const [id,key,label] of list){
+    const t=unlockTimes[key],el=document.getElementById(id);
+    el.textContent=`${formatTime(t)} · ${label}`;
+    el.classList.remove("unlocked","next");
+    if(testingUnlockOverride||sec>=t) el.classList.add("unlocked");
+    else if(!nextFound){el.classList.add("next");nextFound=true;}
+  }
+}
+function updateRuleTimes(){
+  document.getElementById("ruleGridTime").textContent=formatTime(unlockTimes.grid);
+  document.getElementById("ruleNearestTime").textContent=formatTime(unlockTimes.nearest);
+  document.getElementById("ruleTowerRadiusTime").textContent=formatTime(unlockTimes.towerRadius);
+  document.getElementById("ruleLandmarkTime").textContent=formatTime(unlockTimes.landmark);
+  document.getElementById("ruleMarkerTime").textContent=formatTime(unlockTimes.marker);
+  document.getElementById("ruleCooldownTime").textContent=formatTime(questionCooldownSeconds);
+}
+function updateScheduleInputs(){
+  document.getElementById("gridUnlockMinutes").value=unlockTimes.grid/60;
+  document.getElementById("nearestUnlockMinutes").value=unlockTimes.nearest/60;
+  document.getElementById("towerRadiusUnlockMinutes").value=unlockTimes.towerRadius/60;
+  document.getElementById("landmarkUnlockMinutes").value=unlockTimes.landmark/60;
+  document.getElementById("markerUnlockMinutes").value=unlockTimes.marker/60;
+  document.getElementById("questionCooldownMinutes").value=questionCooldownSeconds/60;
+  document.getElementById("scheduleSummary").textContent=
+    `Unlocks: ${formatTime(unlockTimes.grid)} → ${formatTime(unlockTimes.nearest)} → ${formatTime(unlockTimes.towerRadius)} → ${formatTime(unlockTimes.landmark)} → ${formatTime(unlockTimes.marker)} · Cooldown: ${formatTime(questionCooldownSeconds)}`;
+}
+function renderMatchTimer(){
+  const time=formatTime(currentMatchSeconds());
+  document.getElementById("matchTimer").textContent=time;
+  document.getElementById("topTimerClock").textContent=time;
+  updateQuestionLocks();updateMilestones();updateRuleTimes();
+
+  const status=document.getElementById("timerStatus");
+  const topSub=document.getElementById("topTimerSub");
+  if(testingUnlockOverride){
+    status.textContent="Testing override active — all questions unlocked.";
+    topSub.textContent="Testing override active";
+    return;
+  }
+  if(!matchRunning&&matchElapsedMs===0){
+    status.textContent="Start the match to begin the unlock schedule.";
+    topSub.textContent="Match not started";
+    return;
+  }
+  if(!matchRunning){
+    status.textContent="Match timer paused.";
+    topSub.textContent="Paused";
+    return;
+  }
+  const sec=currentMatchSeconds();
+  const upcoming=[
+    [unlockTimes.grid,"Gridline"],[unlockTimes.nearest,"Nearest tower"],
+    [unlockTimes.towerRadius,"Tower radius"],[unlockTimes.landmark,"Landmark questions"],
+    [unlockTimes.marker,"Marker questions"]
+  ].find(([t])=>sec<t);
+
+  if(questionCooldownActive()){
+    const cd=formatTime(questionCooldownRemaining());
+    status.textContent=upcoming
+      ? `Question cooldown: ${cd}. Next unlock: ${upcoming[1]} in ${formatTime(upcoming[0]-sec)}.`
+      : `Question cooldown: ${cd}.`;
+    topSub.textContent=`Question ready in ${cd}`;
+  }else if(upcoming){
+    const rem=formatTime(upcoming[0]-sec);
+    status.textContent=`Next unlock: ${upcoming[1]} in ${rem}. Question is ready if an unlocked type is available.`;
+    topSub.textContent=`${upcoming[1]} in ${rem} · Question ready`;
+  }else{
+    status.textContent="All question types unlocked. Question ready.";
+    topSub.textContent="Question ready";
+  }
+}
+function tickMatchTimer(){
+  if(roomModeConnected()){renderMatchTimer();return;}
+  if(!matchRunning)return;
+  const now=performance.now();
+  if(matchLastTick!==null)matchElapsedMs+=now-matchLastTick;
+  matchLastTick=now;
+  renderMatchTimer();
+}
+function startTimerLoop(){
+  if(timerLoop)clearInterval(timerLoop);
+  timerLoop=setInterval(tickMatchTimer,250);
+}
+function resetMatchState(){
+  matchRunning=false;matchElapsedMs=0;matchLastTick=null;
+  questionCooldownUntil=0;
+  constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker ? "live" : null;nextMarkerId=1;rulerA=null;rulerB=null;
+  document.getElementById("startMatchBtn").textContent="Start match";
+  document.getElementById("startMatchBtn").disabled=false;
+  document.getElementById("pauseMatchBtn").disabled=true;
+  ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
+  updateMarkerPanel();updateRulerPanel();renderMatchTimer();draw();
+}
+
+function allowedAt(x,y){
+  for(const c of constraints){
+    if(c.type==="split"){
+      const v=c.axis==="x"?x:y;
+      if(c.keep==="low"&&!(v<=c.value))return false;
+      if(c.keep==="high"&&!(v>=c.value))return false;
+    }else if(c.type==="nearest"){
+      if(nearestTowerAt(x,y).name!==c.tower)return false;
+    }else if(c.type==="radar"){
+      const t=towers[c.tower],d=Math.hypot(x-t.x,y-t.y);
+      if(c.keep==="inside"&&d>c.radius)return false;
+      if(c.keep==="outside"&&d<=c.radius)return false;
+    }else if(c.type==="nearestLandmark"){
+      if(nearestLandmarkAt(x,y).name!==c.landmark)return false;
+    }else if(c.type==="landmarkRadar"){
+      const t=landmarks[c.landmark],d=Math.hypot(x-t.x,y-t.y);
+      if(c.keep==="inside"&&d>c.radius)return false;
+      if(c.keep==="outside"&&d<=c.radius)return false;
+    }else if(c.type==="markerRadar"){
+      const d=Math.hypot(x-c.x,y-c.y);
+      if(c.keep==="inside"&&d>c.radius)return false;
+      if(c.keep==="outside"&&d<=c.radius)return false;
+    }else if(c.type==="markerDirection"){
+      if(cardinalDirection4(c.x,c.y,x,y).dir!==c.dir)return false;
+    }
+  }
+  return true;
+}
+
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(img,0,0,canvas.width,canvas.height);
+
+  const step=10;
+  ctx.fillStyle="rgba(5,7,10,.72)";
+  for(let py=0;py<canvas.height;py+=step){
+    for(let px=0;px<canvas.width;px+=step){
+      const p=pixelToMap(px+step/2,py+step/2);
+      if(!allowedAt(p.x,p.y))ctx.fillRect(px,py,step+1,step+1);
+    }
+  }
+
+  if(showTowerRegions)drawTowerRegions();
+  if(showGrid)drawGrid();
+  if(showTowers)drawTowers();
+  if(showLandmarks)drawLandmarks();
+  drawPlayerMarker();drawRuler();
+  renderHistory();
+}
+function drawTowerRegions(){
+  ctx.save();
+  const step=18;
+  const colors={
+    Red:"rgba(228,90,84,.16)",Yellow:"rgba(242,189,46,.16)",
+    Green:"rgba(55,180,135,.16)",Black:"rgba(30,30,34,.16)",Blue:"rgba(38,143,208,.16)"
+  };
+  for(let py=0;py<canvas.height;py+=step){
+    for(let px=0;px<canvas.width;px+=step){
+      const m=pixelToMap(px+step/2,py+step/2);
+      ctx.fillStyle=colors[nearestTowerAt(m.x,m.y).name];
+      ctx.fillRect(px,py,step+1,step+1);
+    }
+  }
+  ctx.restore();
+}
+function drawGrid(){
+  ctx.save();ctx.lineWidth=1.15;ctx.strokeStyle="rgba(255,255,255,.66)";
+  ctx.fillStyle="rgba(255,255,255,.92)";ctx.font="14px system-ui";
+  for(let x=1000;x<=2400;x+=100){
+    const p1=mapToPixel(x,3000),p2=mapToPixel(x,4600);
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    const l=mapToPixel(x,3110);if(l.x>=0&&l.x<=canvas.width)ctx.fillText(String(x/100),l.x+3,Math.max(16,l.y));
+  }
+  for(let y=3100;y<=4500;y+=100){
+    const p1=mapToPixel(900,y),p2=mapToPixel(2500,y);
+    ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    const l=mapToPixel(1005,y);if(l.y>=0&&l.y<=canvas.height)ctx.fillText(String(y/100),Math.max(3,l.x),l.y-4);
+  }
+  ctx.restore();
+}
+function drawTowers(){
+  ctx.save();
+  for(const [name,t] of Object.entries(towers)){
+    const p=mapToPixel(t.x,t.y);
+    ctx.beginPath();ctx.arc(p.x,p.y,10,0,Math.PI*2);ctx.fillStyle=t.color;ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle="#fff";ctx.stroke();
+    ctx.font="bold 13px system-ui";ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.82)";
+    ctx.strokeText(name,p.x+14,p.y+4);ctx.fillStyle="#fff";ctx.fillText(name,p.x+14,p.y+4);
+  }
+  ctx.restore();
+}
+function drawLandmarks(){
+  ctx.save();
+  for(const [name,t] of Object.entries(landmarks)){
+    const p=mapToPixel(t.x,t.y);
+    ctx.beginPath();
+    ctx.moveTo(p.x,p.y-10);ctx.lineTo(p.x+10,p.y);ctx.lineTo(p.x,p.y+10);ctx.lineTo(p.x-10,p.y);ctx.closePath();
+    ctx.fillStyle=t.color;ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle="#fff";ctx.stroke();
+    ctx.font="bold 13px system-ui";ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.82)";
+    ctx.strokeText(name,p.x+14,p.y+4);ctx.fillStyle="#fff";ctx.fillText(name,p.x+14,p.y+4);
+  }
+  ctx.restore();
+}
+function drawPlayerMarker(){
+  const markers=allMarkers();
+  if(!markers.length)return;
+  for(const m of markers){
+    const p=mapToPixel(m.x,m.y);ctx.save();
+    ctx.beginPath();ctx.arc(p.x,p.y,18,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,.18)";ctx.fill();
+    ctx.beginPath();ctx.arc(p.x,p.y,9,0,Math.PI*2);ctx.fillStyle=m.color;ctx.fill();
+    ctx.lineWidth=4;ctx.strokeStyle="#111317";ctx.stroke();
+    if(m.id===activeMarkerId){
+      ctx.beginPath();ctx.arc(p.x,p.y,24,0,Math.PI*2);ctx.strokeStyle="rgba(255,255,255,.88)";ctx.lineWidth=2.5;ctx.stroke();
+    }
+    ctx.font="bold 14px system-ui";ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.9)";
+    ctx.strokeText(markerDisplayName(m),p.x+15,p.y+5);ctx.fillStyle="#fff";ctx.fillText(markerDisplayName(m),p.x+15,p.y+5);ctx.restore();
+  }
+}
+function drawRuler(){
+  if(!rulerA)return;
+  const a=mapToPixel(rulerA.x,rulerA.y),b=rulerB?mapToPixel(rulerB.x,rulerB.y):null;ctx.save();
+  function point(p,label){
+    ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.fillStyle="#f7f7f7";ctx.fill();
+    ctx.lineWidth=3;ctx.strokeStyle="#16191f";ctx.stroke();ctx.font="bold 13px system-ui";
+    ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.9)";ctx.strokeText(label,p.x+12,p.y+4);
+    ctx.fillStyle="#fff";ctx.fillText(label,p.x+12,p.y+4);
+  }
+  point(a,"A");
+  if(b){
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle="#f2c94c";
+    ctx.lineWidth=4;ctx.setLineDash([12,8]);ctx.stroke();ctx.setLineDash([]);point(b,"B");
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    const dist=Math.hypot(rulerB.x-rulerA.x,rulerB.y-rulerA.y),br=bearingInfo(rulerA.x,rulerA.y,rulerB.x,rulerB.y);
+    const txt=`${Math.round(dist)} u · ${br.dir} ${br.deg.toFixed(0)}°`;
+    ctx.font="bold 13px system-ui";const w=ctx.measureText(txt).width+12;
+    ctx.fillStyle="rgba(10,12,16,.88)";ctx.fillRect(mx-w/2,my-24,w,20);
+    ctx.fillStyle="#fff";ctx.fillText(txt,mx-w/2+6,my-9);
+  }
+  ctx.restore();
+}
+
+async function getLoopbackPermissionState(){
+  try{
+    if(!navigator.permissions?.query)return "unsupported";
+    const result=await navigator.permissions.query({name:"loopback-network"});
+    return result.state||"unknown";
+  }catch{
+    return "unsupported";
+  }
+}
+function makeLoopbackRequest(url){
+  const base={method:"GET",mode:"cors",cache:"no-store"};
+  try{
+    const request=new Request(url,{...base,targetAddressSpace:"loopback"});
+    return fetch(request);
+  }catch{
+    return fetch(url,base);
+  }
+}
+
+function setLiveLocationStatus(status,coords="—",altitude="—",message=""){
+  document.getElementById("liveLocationStatus").textContent=status;
+  document.getElementById("liveLocationCoords").textContent=coords;
+  document.getElementById("liveLocationAltitude").textContent=altitude;
+  document.getElementById("liveLocationMessage").textContent=message;
+}
+function stopLiveLocation(){
+  liveLocationEnabled=false;
+  if(liveLocationTimer){clearTimeout(liveLocationTimer);liveLocationTimer=null;}
+  liveLocationFailures=0;
+  const wasActive=activeMarkerId==="live";
+  liveMarker=null;
+  if(wasActive)activeMarkerId=playerMarkers.length?playerMarkers[playerMarkers.length-1].id:null;
+  document.getElementById("liveLocationBtn").textContent="Connect live location";
+  setLiveLocationStatus("Disconnected");
+  updateMarkerPanel();updateQuestionLocks();draw();
+}
+async function pollLiveLocation(){
+  if(!liveLocationEnabled)return;
+  try{
+    const response=await makeLoopbackRequest(LIVE_BRIDGE_URL);
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    const data=await response.json();
+
+    if(data.connected && Number.isFinite(Number(data.gameX)) && Number.isFinite(Number(data.gameY))){
+      const gx=Number(data.gameX),gy=Number(data.gameY),alt=Number(data.unityY);
+      liveLocationFailures=0;
+      if(!liveMarker){
+        liveMarker={id:"live",x:gx,y:gy,label:"LIVE YOU",color:"#4cc9f0",live:true};
+        activeMarkerId="live";
+      }else{
+        liveMarker.x=gx;liveMarker.y=gy;
+      }
+      setLiveLocationStatus(
+        "Connected",
+        `Y ${Math.round(gy)}, X ${Math.round(gx)}`,
+        Number.isFinite(alt)?alt.toFixed(1):"—"
+      );
+      updateMarkerPanel();updateQuestionLocks();draw();
+    }else{
+      liveLocationFailures++;
+      setLiveLocationStatus("Plugin connected — waiting for player","—","—","Join or host a walk so PlayerCharacter exists.");
+    }
+  }catch(err){
+    liveLocationFailures++;
+    if(liveMarker){
+      liveMarker=null;
+      if(activeMarkerId==="live")activeMarkerId=playerMarkers.length?playerMarkers[playerMarkers.length-1].id:null;
+      updateMarkerPanel();updateQuestionLocks();draw();
+    }
+    setLiveLocationStatus(
+      "Bridge unavailable",
+      "—",
+      "—",
+      "Make sure Big Walk is running modded with BigWalkLivePosition v0.2.1 and allow loopback/local-network access if your browser asks."
+    );
+  }
+  if(liveLocationEnabled)liveLocationTimer=setTimeout(pollLiveLocation,250);
+}
+async function startLiveLocation(){
+  liveLocationEnabled=true;
+  liveLocationFailures=0;
+  document.getElementById("liveLocationBtn").textContent="Disconnect live location";
+
+  if(location.protocol==="https:"){
+    const permission=await getLoopbackPermissionState();
+    if(permission==="denied"){
+      setLiveLocationStatus("Loopback permission denied","—","—","Allow local/loopback network access for this site in your browser settings, then try again.");
+    }else if(permission==="prompt" || permission==="unsupported"){
+      setLiveLocationStatus("Connecting…","—","—","Your browser may ask permission to access a local/loopback service. Choose Allow.");
+    }else{
+      setLiveLocationStatus("Connecting…");
+    }
+  }else{
+    setLiveLocationStatus("Connecting…");
+  }
+
+  pollLiveLocation();
+}
+
+function updateMarkerPanel(){
+  const empty=document.getElementById("markerEmpty"),info=document.getElementById("markerInfo"),list=document.getElementById("markerList");
+  const active=getActiveMarker();
+
+  list.innerHTML="";
+  const markers=allMarkers();
+  if(!markers.length){
+    empty.style.display="block";info.style.display="none";
+    return;
+  }
+  empty.style.display="none";info.style.display="block";
+
+  for(const m of markers){
+    const row=document.createElement("div");
+    row.className="markerItem";
+
+    const left=document.createElement("div");
+    left.className="markerLeft";
+    const sw=document.createElement("div");
+    sw.className="markerSwatch";
+    sw.style.background=m.color;
+    const meta=document.createElement("div");
+    meta.className="markerMeta";
+    meta.innerHTML=`<b>${markerDisplayName(m)}</b><span>${formatYX(m)}</span>`;
+    left.appendChild(sw);left.appendChild(meta);
+
+    const buttons=document.createElement("div");
+    buttons.className="markerButtons";
+    if(m.live){
+      const liveBadge=document.createElement("span");
+      liveBadge.className="markerBadge";
+      liveBadge.textContent="LIVE";
+      buttons.appendChild(liveBadge);
+    }
+    if(m.id===activeMarkerId){
+      const badge=document.createElement("span");
+      badge.className="markerBadge";
+      badge.textContent="ACTIVE";
+      buttons.appendChild(badge);
+    }else{
+      const useBtn=document.createElement("button");
+      useBtn.className="tinyBtn";
+      useBtn.textContent="Set active";
+      useBtn.onclick=()=>{activeMarkerId=m.id;updateMarkerPanel();updateQuestionLocks();draw();};
+      buttons.appendChild(useBtn);
+    }
+    if(!m.live){
+      const delBtn=document.createElement("button");
+      delBtn.className="tinyBtn";
+      delBtn.textContent="Remove";
+      delBtn.onclick=()=>removeMarker(m.id);
+      buttons.appendChild(delBtn);
+    }
+
+    row.appendChild(left);row.appendChild(buttons);
+    list.appendChild(row);
+  }
+
+  if(!active)return;
+  const n=nearestTowerAt(active.x,active.y),b=bearingInfo(active.x,active.y,n.tower.x,n.tower.y);
+  document.getElementById("markerLabel").textContent=markerDisplayName(active);
+  document.getElementById("markerCoords").textContent=formatYX(active);
+  document.getElementById("markerGrid").textContent=gridSquare(active.x,active.y);
+  document.getElementById("markerNearest").textContent=n.name;
+  document.getElementById("markerTowerDistance").textContent=`${Math.round(n.distance)} units`;
+  document.getElementById("markerTowerBearing").textContent=`${b.dir} (${b.deg.toFixed(0)}°)`;
+}
+function updateRulerPanel(){
+  const empty=document.getElementById("rulerEmpty"),info=document.getElementById("rulerInfo");
+  if(!rulerA||!rulerB){empty.style.display="block";info.style.display="none";return;}
+  empty.style.display="none";info.style.display="block";
+  const d=Math.hypot(rulerB.x-rulerA.x,rulerB.y-rulerA.y),b=bearingInfo(rulerA.x,rulerA.y,rulerB.x,rulerB.y);
+  document.getElementById("rulerA").textContent=formatYX(rulerA);
+  document.getElementById("rulerB").textContent=formatYX(rulerB);
+  document.getElementById("rulerDistance").textContent=`${Math.round(d)} units`;
+  document.getElementById("rulerBearing").textContent=`${b.dir} (${b.deg.toFixed(1)}°)`;
+}
+async function copyText(text,statusEl){
+  try{await navigator.clipboard.writeText(text);}
+  catch{
+    const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);
+    ta.select();document.execCommand("copy");ta.remove();
+  }
+  statusEl.textContent="Copied!";setTimeout(()=>statusEl.textContent="",1300);
+}
+function renderHistory(){
+  const el=document.getElementById("history");el.innerHTML="";
+  historyText.forEach(h=>{const li=document.createElement("li");li.textContent=h;el.appendChild(li);});
+}
+function addConstraint(c,text){
+  if(!roomCanEditSharedGame())return;
+  constraints.push(c);
+  historyText.push(text);
+  startQuestionCooldown();
+  draw();
+  renderMatchTimer();
+  notifyRoomGameStateChanged();
+}
+function updateGridInputRules(){
+  const axis=document.getElementById("axis").value,input=document.getElementById("splitValue");
+  if(axis==="x"){input.min=1500;input.max=1900;input.step=100;if(+input.value<1500||+input.value>1900)input.value=1700;}
+  else{input.min=3600;input.max=4000;input.step=100;if(+input.value<3600||+input.value>4000)input.value=3800;}
+  document.getElementById("splitValidation").textContent="";
+}
+
+function populate(){
+  for(const sel of [document.getElementById("nearestTower"),document.getElementById("radarTower")]){
+    for(const name of Object.keys(towers)){
+      const o=document.createElement("option");o.value=name;o.textContent=name;sel.appendChild(o);
+    }
+  }
+  for(const sel of [document.getElementById("nearestLandmark"),document.getElementById("landmarkRadiusLandmark")]){
+    for(const name of Object.keys(landmarks)){
+      const o=document.createElement("option");o.value=name;o.textContent=name;sel.appendChild(o);
+    }
+  }
+  const leg=document.getElementById("towerLegend");
+  for(const [name,t] of Object.entries(towers)){
+    const d=document.createElement("div");
+    d.innerHTML=`<span class="dot" style="background:${t.color}"></span>${name}: Y${t.y}, X${t.x}`;
+    leg.appendChild(d);
+  }
+  const landLeg=document.getElementById("landmarkLegend");
+  for(const [name,t] of Object.entries(landmarks)){
+    const d=document.createElement("div");
+    d.innerHTML=`<span class="dot" style="background:${t.color}"></span>${name}: Y${t.y}, X${t.x}`;
+    landLeg.appendChild(d);
+  }
+}
+
+document.querySelectorAll(".tabBtn").forEach(btn=>btn.onclick=()=>{
+  if(panelVisible&&activeTab===btn.dataset.tab){hidePanel();return;}
+  showTab(btn.dataset.tab);
+});
+document.querySelectorAll(".closePanel").forEach(btn=>btn.onclick=hidePanel);
+
+// Keep toolbar pointer events from being captured by the map pane.
+const mapToolDock=document.getElementById("mapToolDock");
+mapToolDock.addEventListener("pointerdown",e=>e.stopPropagation());
+mapToolDock.addEventListener("pointerup",e=>e.stopPropagation());
+
+document.getElementById("startMatchBtn").onclick=()=>{
+  if(roomModeConnected()){Promise.resolve(window.BigWalkRooms.startMatch()).catch(console.error);return;}
+  if(matchRunning)return;
+  matchRunning=true;matchLastTick=performance.now();
+  document.getElementById("startMatchBtn").textContent="Running";
+  document.getElementById("startMatchBtn").disabled=true;
+  document.getElementById("pauseMatchBtn").disabled=false;renderMatchTimer();
+};
+document.getElementById("pauseMatchBtn").onclick=()=>{
+  if(roomModeConnected()){Promise.resolve(window.BigWalkRooms.pauseMatch()).catch(console.error);return;}
+  if(!matchRunning)return;
+  tickMatchTimer();matchRunning=false;matchLastTick=null;
+  document.getElementById("startMatchBtn").textContent="Resume";
+  document.getElementById("startMatchBtn").disabled=false;
+  document.getElementById("pauseMatchBtn").disabled=true;renderMatchTimer();
+};
+document.getElementById("resetMatchBtn").onclick=()=>{
+  if(!confirm("Reset the match timer and clear all game state?"))return;
+  if(roomModeConnected())Promise.resolve(window.BigWalkRooms.resetMatch()).catch(console.error);
+  else resetMatchState();
+};
+document.getElementById("undoBtn").onclick=()=>{
+  if(!roomCanEditSharedGame()||!constraints.length)return;
+  constraints.pop();
+  historyText.pop();
+  cancelQuestionCooldown();
+  draw();
+  renderMatchTimer();
+  notifyRoomGameStateChanged();
+};
+document.getElementById("clearQuestionsBtn").onclick=()=>{
+  if(!roomCanEditSharedGame())return;
+  constraints=[];
+  historyText=[];
+  cancelQuestionCooldown();
+  draw();
+  renderMatchTimer();
+  notifyRoomGameStateChanged();
+};
+
+panModeBtn.onclick=()=>setToolMode("pan");
+placeModeBtn.onclick=()=>{setToolMode("place");requestAnimationFrame(()=>waypointNameInput.focus());};
+rulerModeBtn.onclick=()=>{setToolMode("ruler");if(rulerA&&rulerB){rulerA=null;rulerB=null;updateRulerPanel();draw();}};
+document.getElementById("towerRegionsBtn").onclick=()=>{
+  showTowerRegions=!showTowerRegions;
+  document.getElementById("towerRegionsBtn").textContent=showTowerRegions?"Hide tower regions":"Show tower regions";
+  draw();
+};
+document.getElementById("placeCoordinatesBtn").onclick=()=>{
+  const input=document.getElementById("coordinateEntry");
+  const validation=document.getElementById("coordinateEntryValidation");
+  validation.textContent="";
+  const parsed=parseYXCoordinates(input.value);
+
+  if(!parsed){
+    validation.textContent="Enter two coordinates in Y, X order — for example: 3937, 1908.";
+    return;
+  }
+  if(!coordinateLooksOnMap(parsed)){
+    validation.textContent="Those coordinates fall outside the mapped area.";
+    return;
+  }
+
+  addMarker(parsed.x,parsed.y,"");
+  input.value="";
+
+  validation.style.color="#9ef1c2";
+  validation.textContent=`Marker added at Y ${Math.round(parsed.y)}, X ${Math.round(parsed.x)}.`;
+  setTimeout(()=>{
+    validation.textContent="";
+    validation.style.color="";
+  },1600);
+};
+document.getElementById("coordinateEntry").addEventListener("keydown",e=>{
+  if(e.key==="Enter")document.getElementById("placeCoordinatesBtn").click();
+});
+
+document.getElementById("liveLocationBtn").onclick=()=>{
+  if(liveLocationEnabled)stopLiveLocation();
+  else startLiveLocation();
+};
+
+document.getElementById("clearMarkerBtn").onclick=()=>{
+  const active=getActiveMarker();
+  if(!active)return;
+  if(active.live){
+    document.getElementById("liveLocationMessage").textContent="Disconnect live location to remove the LIVE marker.";
+    setTimeout(()=>document.getElementById("liveLocationMessage").textContent="",1600);
+    return;
+  }
+  removeMarker(active.id);
+};
+document.getElementById("clearAllMarkersBtn").onclick=()=>{
+  playerMarkers=[];
+  activeMarkerId=liveMarker ? "live" : null;
+  updateMarkerPanel();updateQuestionLocks();draw();
+};
+document.getElementById("copyMarkerBtn").onclick=()=>{
+  const active=getActiveMarker();
+  if(!active)return;
+  const n=nearestTowerAt(active.x,active.y);
+  copyText(`${markerDisplayName(active)} | Y ${Math.round(active.y)}, X ${Math.round(active.x)} | ${gridSquare(active.x,active.y)} | Nearest tower: ${n.name} (${Math.round(n.distance)} units)`,document.getElementById("copyStatus"));
+};
+document.getElementById("clearRulerBtn").onclick=()=>{rulerA=null;rulerB=null;updateRulerPanel();draw();};
+document.getElementById("copyRulerBtn").onclick=()=>{
+  if(!rulerA||!rulerB)return;
+  const d=Math.hypot(rulerB.x-rulerA.x,rulerB.y-rulerA.y),b=bearingInfo(rulerA.x,rulerA.y,rulerB.x,rulerB.y);
+  copyText(`A: ${formatYX(rulerA)} | B: ${formatYX(rulerB)} | Distance: ${Math.round(d)} units | Bearing A→B: ${b.dir} ${b.deg.toFixed(1)}°`,document.getElementById("rulerCopyStatus"));
+};
+
+document.getElementById("axis").onchange=updateGridInputRules;
+document.getElementById("applySplit").onclick=()=>{
+  const axis=document.getElementById("axis").value,value=+document.getElementById("splitValue").value,keep=document.getElementById("splitAnswer").value;
+  const validation=document.getElementById("splitValidation");validation.textContent="";
+  const min=axis==="x"?1500:3600,max=axis==="x"?1900:4000;
+  if(!Number.isFinite(value)||value<min||value>max||value%100!==0){
+    validation.textContent=axis==="x"?"Invalid gridline — use X 15 through X 19 only.":"Invalid gridline — use Y 36 through Y 40 only.";return;
+  }
+  const dir=axis==="y"?(keep==="low"?"north":"south"):(keep==="low"?"west":"east");
+  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`);
+};
+document.getElementById("applyNearest").onclick=()=>{
+  const tower=document.getElementById("nearestTower").value;
+  addConstraint({type:"nearest",tower},`Closest tower: ${tower}.`);
+};
+document.getElementById("applyRadar").onclick=()=>{
+  const tower=document.getElementById("radarTower").value,radius=+document.getElementById("radarRadius").value,keep=document.getElementById("radarAnswer").value;
+  const validation=document.getElementById("radarValidation");validation.textContent="";
+  if(!Number.isFinite(radius)||radius<250){validation.textContent="Invalid radius — minimum allowed is 250 units.";return;}
+  addConstraint({type:"radar",tower,radius,keep},`${keep==="inside"?"Within":"Outside"} ${radius} units of ${tower} Tower.`);
+};
+
+document.getElementById("landmarkQuestionType").onchange=e=>{
+  const nearest=e.target.value==="nearest";
+  document.getElementById("landmarkNearestFields").style.display=nearest?"block":"none";
+  document.getElementById("landmarkRadiusFields").style.display=nearest?"none":"block";
+  document.getElementById("landmarkQuestionValidation").textContent="";
+};
+document.getElementById("applyLandmarkQuestion").onclick=()=>{
+  const v=document.getElementById("landmarkQuestionValidation");v.textContent="";
+  const type=document.getElementById("landmarkQuestionType").value;
+  if(type==="nearest"){
+    const landmark=document.getElementById("nearestLandmark").value;
+    addConstraint({type:"nearestLandmark",landmark},`Closest landmark: ${landmark}.`);
+  }else{
+    const landmark=document.getElementById("landmarkRadiusLandmark").value,radius=+document.getElementById("landmarkRadius").value,keep=document.getElementById("landmarkRadiusAnswer").value;
+    if(!Number.isFinite(radius)||radius<150){v.textContent="Invalid radius — minimum allowed is 150 units.";return;}
+    addConstraint({type:"landmarkRadar",landmark,radius,keep},`${keep==="inside"?"Within":"Outside"} ${radius} units of ${landmark}.`);
+  }
+};
+
+document.getElementById("markerQuestionType").onchange=e=>{
+  const dist=e.target.value==="distance";
+  document.getElementById("markerDistanceFields").style.display=dist?"block":"none";
+  document.getElementById("markerDirectionFields").style.display=dist?"none":"block";
+  document.getElementById("markerQuestionValidation").textContent="";
+};
+document.getElementById("applyMarkerQuestion").onclick=()=>{
+  const v=document.getElementById("markerQuestionValidation");v.textContent="";
+  const active=getActiveMarker();
+  if(!active){v.textContent='Place at least one marker and set an active marker first.';return;}
+  const type=document.getElementById("markerQuestionType").value;
+  if(type==="distance"){
+    const radius=+document.getElementById("markerRadius").value,keep=document.getElementById("markerDistanceAnswer").value;
+    if(!Number.isFinite(radius)||radius<250){v.textContent="Invalid radius — minimum allowed is 250 units.";return;}
+    addConstraint({type:"markerRadar",x:active.x,y:active.y,radius,keep},
+      `${keep==="inside"?"Within":"Outside"} ${radius} units of ${markerDisplayName(active)} at ${formatYX(active)}.`);
+  }else{
+    const dir=document.getElementById("markerDirectionAnswer").value;
+    addConstraint({type:"markerDirection",x:active.x,y:active.y,dir},
+      `Hider is ${dir} of ${markerDisplayName(active)} at ${formatYX(active)}.`);
+  }
+};
+
+document.getElementById("buildScheduleBtn").onclick=()=>{
+  const first=+document.getElementById("firstUnlockMinutes").value;
+  const interval=+document.getElementById("unlockIntervalMinutes").value;
+  const v=document.getElementById("scheduleValidation");v.textContent="";
+  if(!Number.isFinite(first)||first<0||!Number.isFinite(interval)||interval<=0){
+    v.textContent="Use a first unlock of 0 minutes or more and an interval greater than 0.";return;
+  }
+  const vals=[first,first+interval,first+2*interval,first+3*interval,first+4*interval];
+  ["gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes"].forEach((id,i)=>document.getElementById(id).value=vals[i]);
+  document.getElementById("scheduleSummary").textContent=`Preview: ${vals.map(m=>formatTime(m*60)).join(" → ")}`;
+};
+document.getElementById("applyScheduleBtn").onclick=()=>{
+  if(!roomCanEditSharedGame()){document.getElementById("scheduleValidation").textContent="Shared room: only seekers (or the host) can change match timing.";return;}
+  const ids=["gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes"];
+  const vals=ids.map(id=>+document.getElementById(id).value);
+  const cooldownMinutes=+document.getElementById("questionCooldownMinutes").value;
+  const v=document.getElementById("scheduleValidation");v.textContent="";
+
+  if(vals.some(x=>!Number.isFinite(x)||x<0)){
+    v.textContent="Unlock times must be 0 minutes or greater.";return;
+  }
+  if(!(vals[0]<=vals[1]&&vals[1]<=vals[2]&&vals[2]<=vals[3]&&vals[3]<=vals[4])){
+    v.textContent="Unlock times must stay in order: Gridline ≤ Nearest Tower ≤ Tower Radius ≤ Landmark Questions ≤ Marker Questions.";return;
+  }
+  if(!Number.isFinite(cooldownMinutes)||cooldownMinutes<=0){
+    v.textContent="Question cooldown must be greater than 0 minutes.";return;
+  }
+
+  unlockTimes={grid:vals[0]*60,nearest:vals[1]*60,towerRadius:vals[2]*60,landmark:vals[3]*60,marker:vals[4]*60};
+  questionCooldownSeconds=cooldownMinutes*60;
+  updateScheduleInputs();renderMatchTimer();
+  notifyRoomGameStateChanged();
+  v.style.color="#9ef1c2";v.textContent="Timing settings applied.";
+  setTimeout(()=>{v.textContent="";v.style.color="";},1500);
+};
+document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
+
+document.getElementById("fitBtn").onclick=fitMap;
+document.getElementById("gridBtn").onclick=()=>{
+  showGrid=!showGrid;document.getElementById("gridBtn").textContent=showGrid?"Hide grid":"Show grid";draw();
+};
+document.getElementById("towerBtn").onclick=()=>{
+  showTowers=!showTowers;document.getElementById("towerBtn").textContent=showTowers?"Hide towers":"Show towers";draw();
+};
+document.getElementById("landmarkBtn").onclick=()=>{
+  showLandmarks=!showLandmarks;document.getElementById("landmarkBtn").textContent=showLandmarks?"Hide landmarks":"Show landmarks";draw();
+};
+pane.addEventListener("pointerdown",e=>{
+  pointerDownPos={x:e.clientX,y:e.clientY};movedSinceDown=false;last={x:e.clientX,y:e.clientY};
+  if(toolMode==="pan"){dragging=true;stage.classList.add("dragging");}
+  pane.setPointerCapture(e.pointerId);
+});
+pane.addEventListener("pointermove",e=>{
+  const p=eventToCanvas(e),r=pane.getBoundingClientRect();
+  const inside=p.x>=0&&p.y>=0&&p.x<=canvas.width&&p.y<=canvas.height;
+  if(pointerDownPos&&Math.hypot(e.clientX-pointerDownPos.x,e.clientY-pointerDownPos.y)>5)movedSinceDown=true;
+  if(inside){
+    const m=pixelToMap(p.x,p.y);
+    coordTip.textContent=`Y ${Math.round(m.y)}, X ${Math.round(m.x)}`;
+    coordTip.style.display="block";coordTip.style.left=`${e.clientX-r.left}px`;coordTip.style.top=`${e.clientY-r.top}px`;
+  }else coordTip.style.display="none";
+
+  if(dragging){
+    view.ox+=e.clientX-last.x;view.oy+=e.clientY-last.y;last={x:e.clientX,y:e.clientY};applyTransform();
+  }
+});
+pane.addEventListener("pointerup",e=>{
+  const p=eventToCanvas(e),inside=p.x>=0&&p.y>=0&&p.x<=canvas.width&&p.y<=canvas.height;
+  if(!movedSinceDown&&inside){
+    const m=pixelToMap(p.x,p.y);
+    if(toolMode==="place"){
+      addMarker(m.x,m.y,waypointNameInput.value);
+      waypointNameInput.value="";
+    }else if(toolMode==="ruler"){
+      if(!rulerA||(rulerA&&rulerB)){rulerA={x:m.x,y:m.y};rulerB=null;}
+      else rulerB={x:m.x,y:m.y};
+      updateRulerPanel();draw();
+    }
+  }
+  dragging=false;pointerDownPos=null;stage.classList.remove("dragging");
+});
+pane.addEventListener("pointerleave",()=>{coordTip.style.display="none";});
+pane.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const r=pane.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top,old=view.scale;
+  const ns=Math.min(5,Math.max(.25,old*(e.deltaY<0?1.12:.89)));
+  const cx=(mx-view.ox)/old,cy=(my-view.oy)/old;
+  view.scale=ns;view.ox=mx-cx*ns;view.oy=my-cy*ns;applyTransform();
+},{passive:false});
+
+async function checkForSiteUpdate(){
+  if(location.protocol==="file:")return;
+  try{
+    const response=await fetch(`../version.json?_=${Date.now()}`,{cache:"no-store"});
+    if(!response.ok)return;
+    const info=await response.json();
+    if(info?.version && info.version!==APP_VERSION){
+      document.getElementById("updateBannerText").textContent=`Update available: v${info.version} (you are on v${APP_VERSION}).`;
+      document.getElementById("updateBanner").style.display="flex";
+    }
+  }catch{}
+}
+function forceReloadLatest(){
+  const url=new URL(location.href);
+  url.searchParams.set("_update",Date.now().toString());
+  location.replace(url.toString());
+}
+document.getElementById("reloadLatestBtn").onclick=forceReloadLatest;
+
+let appInitialized=false;
+function initializeMapApp(){
+  if(appInitialized || !img.naturalWidth || !img.naturalHeight)return;
+  appInitialized=true;
+  canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+  populate();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();
+  setToolMode("pan");renderMatchTimer();startTimerLoop();draw();fitMap();
+  checkForSiteUpdate();
+  setInterval(checkForSiteUpdate,300000);
+}
+img.addEventListener("load",initializeMapApp,{once:true});
+if(img.complete && img.naturalWidth>0)initializeMapApp();
+window.addEventListener("resize",()=>{if(appInitialized)fitMap();});
+</script>
+<script src="firebase-config.js"></script>
+<script type="module" src="rooms.js"></script>
+</body>
+</html>
