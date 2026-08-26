@@ -26,6 +26,7 @@ function bridge(){ return window.BigWalkRoomBridge || null; }
 function serverNow(){ return Date.now() + serverTimeOffsetMs; }
 function isConnected(){ return !!(roomCode && roomData && user); }
 function isHost(){ return isConnected() && roomData?.meta?.hostUid === user.uid; }
+function isMatchRunning(){ return !!roomData?.state?.match?.running; }
 function canControlMatch(){ return !isConnected() || isHost(); }
 function canEditSharedGame(){ return !isConnected() || roomRole === "seeker" || isHost(); }
 
@@ -501,6 +502,7 @@ function bindUi(){
 window.BigWalkRooms = {
   isConnected,
   isHost,
+  isMatchRunning,
   canControlMatch,
   canEditSharedGame,
   getMatchSeconds,
