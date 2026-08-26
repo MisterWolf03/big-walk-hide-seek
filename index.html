@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Big Walk Hide + Seek — Prototype 1.1.3</title>
+<title>Big Walk Hide + Seek — Prototype 1.1.4</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#181d24; --panel2:#222934; --line:#303947;
@@ -69,6 +69,12 @@
     stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
   .mapToolBtn.toolActive{outline:none;background:#4b3f19!important;border-color:var(--accent);color:#ffe58b}
   .mapToolBtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+  #waypointNamePopover{
+    display:none;position:absolute;top:calc(100% + 7px);left:55px;width:190px;padding:6px;
+    background:rgba(17,21,27,.96);border:1px solid var(--line);border-radius:9px;
+    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)
+  }
+  #waypointNameInput{width:100%;padding:8px 9px;font-size:12px}
 
   #panel{
     position:absolute;top:14px;right:14px;width:390px;max-height:calc(100% - 28px);
@@ -180,6 +186,7 @@
     #topTimerSub{display:none}
     #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
     .mapToolBtn{width:40px;height:40px;min-width:40px}
+    #waypointNamePopover{left:50px;width:170px}
     #panel{left:8px;right:8px;top:8px;width:auto;max-height:calc(100% - 16px)}
   }
 </style>
@@ -233,6 +240,9 @@
           <path d="M7 7v4M11 7v2.5M15 7v4M19 7v2.5"/>
         </svg>
       </button>
+      <div id="waypointNamePopover">
+        <input id="waypointNameInput" type="text" maxlength="40" autocomplete="off" placeholder="Waypoint name (optional)" aria-label="Waypoint name">
+      </div>
     </div>
   </div>
 
@@ -291,8 +301,6 @@
 
       <section>
         <h3>Markers</h3>
-        <label>New marker label (optional)</label>
-        <input id="markerLabelInput" type="text" placeholder="e.g. Seeker A">
         <div id="markerEmpty" class="small" style="margin-top:10px">No markers placed yet.</div>
         <div id="markerList" class="markerList"></div>
         <div id="markerInfo" style="display:none">
@@ -546,19 +554,12 @@
           <button id="towerBtn">Hide towers</button>
           <button id="landmarkBtn">Hide landmarks</button>
         </div>
-        <button id="calBtn" style="margin-top:8px">Calibration debug</button>
       </section>
 
       <section>
         <h3>Development / testing</h3>
         <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>
         <p class="small">Does not change the match timer.</p>
-      </section>
-
-      <section>
-        <h3>Calibration</h3>
-        <p class="small good">Five-point affine calibration is retained from v0.2 and is visually aligned across the map.</p>
-        <p class="small">Calibration Debug shows recovered control points and fitted tower positions.</p>
       </section>
 
       <section>
@@ -574,6 +575,15 @@
 
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
+
+      <div class="changeEntry">
+        <h4>v1.1.4 — Waypoint naming + settings cleanup</h4>
+        <ul>
+          <li>Waypoint names are now entered from a compact field directly beneath the diamond placement tool.</li>
+          <li>Removed the old marker-name textbox from the Map Tools sidebar.</li>
+          <li>Removed the Calibration Debug toggle and Calibration settings section.</li>
+        </ul>
+      </div>
 
       <div class="changeEntry">
         <h4>v1.1.3 — Floating toolbar click fix</h4>
@@ -714,7 +724,7 @@
 </div>
 
 <script>
-const APP_VERSION="1.1.3";
+const APP_VERSION="1.1.4";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -728,14 +738,6 @@ const towers = {
 const landmarks = {
   "Purple Tunnel": {x:1897,y:4286,color:"#9b5de5"},
   "Microphone": {x:1235,y:3408,color:"#ff4fa3"}
-};
-
-const controlPixels = {
-  Red:    {x:497.7640, y:606.3009},
-  Yellow: {x:664.3329, y:237.0822},
-  Green:  {x:1008.4276,y:879.0677},
-  Black:  {x:774.4832, y:414.2510},
-  Blue:   {x:954.8359, y:475.6674}
 };
 
 const T = {
@@ -756,7 +758,7 @@ const coordTip=document.getElementById("coordTip");
 const panel=document.getElementById("panel");
 
 let activeTab="game", panelVisible=true;
-let showGrid=true, showTowers=true, showLandmarks=true, showCalibration=false, showTowerRegions=false;
+let showGrid=true, showTowers=true, showLandmarks=true, showTowerRegions=false;
 let constraints=[], historyText=[];
 let view={scale:1,ox:0,oy:0};
 let dragging=false,last={x:0,y:0},pointerDownPos=null,movedSinceDown=false;
@@ -774,6 +776,8 @@ let testingUnlockOverride=false;
 const panModeBtn=document.getElementById("panModeBtn");
 const placeModeBtn=document.getElementById("placeModeBtn");
 const rulerModeBtn=document.getElementById("rulerModeBtn");
+const waypointNamePopover=document.getElementById("waypointNamePopover");
+const waypointNameInput=document.getElementById("waypointNameInput");
 
 function mapToPixel(x,y){return {x:T.a*x+T.b*y+T.c,y:T.d*x+T.e*y+T.f};}
 function pixelToMap(px,py){return {x:TI.a*px+TI.b*py+TI.c,y:TI.d*px+TI.e*py+TI.f};}
@@ -882,6 +886,7 @@ function setToolMode(mode){
   panModeBtn.setAttribute("aria-pressed",String(mode==="pan"));
   placeModeBtn.setAttribute("aria-pressed",String(mode==="place"));
   rulerModeBtn.setAttribute("aria-pressed",String(mode==="ruler"));
+  waypointNamePopover.style.display=mode==="place"?"block":"none";
   stage.style.cursor=mode==="pan"?"grab":"crosshair";
 }
 
@@ -1108,7 +1113,6 @@ function draw(){
   if(showTowers)drawTowers();
   if(showLandmarks)drawLandmarks();
   drawPlayerMarker();drawRuler();
-  if(showCalibration)drawCalibration();
   renderHistory();
 }
 function drawTowerRegions(){
@@ -1163,22 +1167,6 @@ function drawLandmarks(){
     ctx.lineWidth=3;ctx.strokeStyle="#fff";ctx.stroke();
     ctx.font="bold 13px system-ui";ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.82)";
     ctx.strokeText(name,p.x+14,p.y+4);ctx.fillStyle="#fff";ctx.fillText(name,p.x+14,p.y+4);
-  }
-  ctx.restore();
-}
-function drawCalibration(){
-  ctx.save();ctx.font="bold 12px system-ui";
-  for(const [name,target] of Object.entries(controlPixels)){
-    const t=towers[name],fit=mapToPixel(t.x,t.y),err=Math.hypot(fit.x-target.x,fit.y-target.y);
-    ctx.beginPath();ctx.moveTo(target.x,target.y);ctx.lineTo(fit.x,fit.y);
-    ctx.strokeStyle="#33e6ff";ctx.lineWidth=4;ctx.stroke();
-    ctx.beginPath();ctx.moveTo(target.x-16,target.y);ctx.lineTo(target.x+16,target.y);
-    ctx.moveTo(target.x,target.y-16);ctx.lineTo(target.x,target.y+16);
-    ctx.strokeStyle="#ff4cff";ctx.lineWidth=3;ctx.stroke();
-    ctx.beginPath();ctx.arc(fit.x,fit.y,15,0,Math.PI*2);ctx.strokeStyle="#33e6ff";ctx.lineWidth=2;ctx.stroke();
-    const label=`${name} Δ ${err.toFixed(1)} px`;
-    ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.9)";ctx.strokeText(label,target.x+20,target.y-12);
-    ctx.fillStyle="#ffb3ff";ctx.fillText(label,target.x+20,target.y-12);
   }
   ctx.restore();
 }
@@ -1492,7 +1480,7 @@ document.getElementById("clearQuestionsBtn").onclick=()=>{
 };
 
 panModeBtn.onclick=()=>setToolMode("pan");
-placeModeBtn.onclick=()=>setToolMode("place");
+placeModeBtn.onclick=()=>{setToolMode("place");requestAnimationFrame(()=>waypointNameInput.focus());};
 rulerModeBtn.onclick=()=>{setToolMode("ruler");if(rulerA&&rulerB){rulerA=null;rulerB=null;updateRulerPanel();draw();}};
 document.getElementById("towerRegionsBtn").onclick=()=>{
   showTowerRegions=!showTowerRegions;
@@ -1514,9 +1502,8 @@ document.getElementById("placeCoordinatesBtn").onclick=()=>{
     return;
   }
 
-  addMarker(parsed.x,parsed.y,document.getElementById("markerLabelInput").value);
+  addMarker(parsed.x,parsed.y,"");
   input.value="";
-  document.getElementById("markerLabelInput").value="";
 
   validation.style.color="#9ef1c2";
   validation.textContent=`Marker added at Y ${Math.round(parsed.y)}, X ${Math.round(parsed.x)}.`;
@@ -1671,8 +1658,6 @@ document.getElementById("towerBtn").onclick=()=>{
 document.getElementById("landmarkBtn").onclick=()=>{
   showLandmarks=!showLandmarks;document.getElementById("landmarkBtn").textContent=showLandmarks?"Hide landmarks":"Show landmarks";draw();
 };
-document.getElementById("calBtn").onclick=()=>{showCalibration=!showCalibration;draw();};
-
 pane.addEventListener("pointerdown",e=>{
   pointerDownPos={x:e.clientX,y:e.clientY};movedSinceDown=false;last={x:e.clientX,y:e.clientY};
   if(toolMode==="pan"){dragging=true;stage.classList.add("dragging");}
@@ -1697,8 +1682,8 @@ pane.addEventListener("pointerup",e=>{
   if(!movedSinceDown&&inside){
     const m=pixelToMap(p.x,p.y);
     if(toolMode==="place"){
-      addMarker(m.x,m.y,document.getElementById("markerLabelInput").value);
-      document.getElementById("markerLabelInput").value="";
+      addMarker(m.x,m.y,waypointNameInput.value);
+      waypointNameInput.value="";
     }else if(toolMode==="ruler"){
       if(!rulerA||(rulerA&&rulerB)){rulerA={x:m.x,y:m.y};rulerB=null;}
       else rulerB={x:m.x,y:m.y};
