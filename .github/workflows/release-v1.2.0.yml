@@ -27,133 +27,108 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          p = Path('index.html')
-          s = p.read_text(encoding='utf-8')
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
 
-          def replace_once(old, new, label):
+          def once(old,new,label):
               global s
-              count = s.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected 1 match, found {count}')
-              s = s.replace(old, new, 1)
+              n=s.count(old)
+              if n!=1:
+                  raise SystemExit(f'{label}: expected 1 match, found {n}')
+              s=s.replace(old,new,1)
 
-          replace_once(
-              '<title>Big Walk Hide + Seek — Prototype 1.1.4</title>',
-              '<title>Big Walk Hide + Seek — Prototype 1.2.0</title>',
-              'title version'
-          )
-          replace_once('const APP_VERSION="1.1.4";', 'const APP_VERSION="1.2.0";', 'app version')
-          replace_once(
-              '<div class="panelHeader"><h2>Room <span class="small">v1.2.0 preview</span></h2><button class="closePanel">Hide</button></div>',
-              '<div class="panelHeader"><h2>Room <span class="small">v1.2.0</span></h2><button class="closePanel">Hide</button></div>',
-              'room version label'
-          )
+          once('<title>Big Walk Hide + Seek — Prototype 1.1.4</title>','<title>Big Walk Hide + Seek — Prototype 1.2.0</title>','title version')
+          once('const APP_VERSION="1.1.4";','const APP_VERSION="1.2.0";','app version')
+          once('<div class="panelHeader"><h2>Room <span class="small">v1.2.0 preview</span></h2><button class="closePanel">Hide</button></div>','<div class="panelHeader"><h2>Room <span class="small">v1.2.0</span></h2><button class="closePanel">Hide</button></div>','room version label')
 
-          old_question = '''      <section id="gridQuestionSection" class="questionCard locked">
-        <h3>Gridline</h3>
-        <div class="questionCost" id="gridQuestionCost">Cost: 4 points</div>
-        <div class="lockNotice" id="gridLockNotice">Locked.</div>
-        <label>Axis</label>
-        <select id="axis">
-          <option value="y">North / South (Y)</option>
-          <option value="x">West / East (X)</option>
-        </select>
-        <label>Coordinate</label>
-        <input id="splitValue" type="number" step="100" value="3800">
-        <p class="small">Legal central gridlines only: <b>X 15–19</b> or <b>Y 36–40</b>.</p>
-        <label>Hider's answer</label>
-        <select id="splitAnswer">
-          <option value="low">North / West</option>
-          <option value="high">South / East</option>
-        </select>
-        <button class="primary" id="applySplit">Apply answer</button>
-        <div id="splitValidation" class="validation"></div>
-      </section>'''
-          new_question = '''      <section id="gridQuestionSection" class="questionCard locked">
-        <h3>Centerline</h3>
-        <div class="questionCost" id="gridQuestionCost">Cost: 4 points</div>
-        <div class="lockNotice" id="gridLockNotice">Locked.</div>
-        <label>Centerline</label>
-        <select id="axis">
-          <option value="y">Horizontal centerline — Y 3700</option>
-          <option value="x">Vertical centerline — X 1700</option>
-        </select>
-        <p class="small">Centerline questions always cut straight through the middle of the playable map: <b>Y 3700</b> or <b>X 1700</b>.</p>
-        <label>Hider's answer</label>
-        <select id="splitAnswer">
-          <option value="low">North</option>
-          <option value="high">South</option>
-        </select>
-        <button class="primary" id="applySplit">Apply answer</button>
-        <div id="splitValidation" class="validation"></div>
-      </section>'''
-          replace_once(old_question, new_question, 'centerline question UI')
+          question='\n'.join([
+              '      <section id="gridQuestionSection" class="questionCard locked">',
+              '        <h3>Centerline</h3>',
+              '        <div class="questionCost" id="gridQuestionCost">Cost: 4 points</div>',
+              '        <div class="lockNotice" id="gridLockNotice">Locked.</div>',
+              '        <label>Centerline</label>',
+              '        <select id="axis">',
+              '          <option value="y">Horizontal centerline — Y 3700</option>',
+              '          <option value="x">Vertical centerline — X 1700</option>',
+              '        </select>',
+              '        <p class="small">Centerline questions always cut straight through the middle of the playable map: <b>Y 3700</b> or <b>X 1700</b>.</p>',
+              '        <label>Hider\'s answer</label>',
+              '        <select id="splitAnswer">',
+              '          <option value="low">North</option>',
+              '          <option value="high">South</option>',
+              '        </select>',
+              '        <button class="primary" id="applySplit">Apply answer</button>',
+              '        <div id="splitValidation" class="validation"></div>',
+              '      </section>'
+          ])
+          s,n=re.subn(r'      <section id="gridQuestionSection" class="questionCard locked">.*?      </section>',question,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'centerline question UI: expected 1 match, found {n}')
 
-          old_rules = '''function updateGridInputRules(){
-  const axis=document.getElementById("axis").value,input=document.getElementById("splitValue");
-  if(axis==="x"){input.min=1500;input.max=1900;input.step=100;if(+input.value<1500||+input.value>1900)input.value=1700;}
-  else{input.min=3600;input.max=4000;input.step=100;if(+input.value<3600||+input.value>4000)input.value=3800;}
-  document.getElementById("splitValidation").textContent="";
-}'''
-          new_rules = '''function updateGridInputRules(){
-  const axis=document.getElementById("axis").value,answer=document.getElementById("splitAnswer");
-  const low=answer.querySelector('option[value="low"]'),high=answer.querySelector('option[value="high"]');
-  if(axis==="x"){low.textContent="West";high.textContent="East";}
-  else{low.textContent="North";high.textContent="South";}
-  document.getElementById("splitValidation").textContent="";
-}'''
-          replace_once(old_rules, new_rules, 'centerline answer labels')
+          rules='\n'.join([
+              'function updateGridInputRules(){',
+              '  const axis=document.getElementById("axis").value,answer=document.getElementById("splitAnswer");',
+              '  const low=answer.querySelector(\'option[value="low"]\'),high=answer.querySelector(\'option[value="high"]\');',
+              '  if(axis==="x"){low.textContent="West";high.textContent="East";}',
+              '  else{low.textContent="North";high.textContent="South";}',
+              '  document.getElementById("splitValidation").textContent="";',
+              '}'
+          ])
+          s,n=re.subn(r'function updateGridInputRules\(\)\{.*?\n\}',rules,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'centerline answer labels: expected 1 match, found {n}')
 
-          old_apply = '''document.getElementById("applySplit").onclick=()=>{
-  const axis=document.getElementById("axis").value,value=+document.getElementById("splitValue").value,keep=document.getElementById("splitAnswer").value;
-  const validation=document.getElementById("splitValidation");validation.textContent="";
-  const min=axis==="x"?1500:3600,max=axis==="x"?1900:4000;
-  if(!Number.isFinite(value)||value<min||value>max||value%100!==0){
-    validation.textContent=axis==="x"?"Invalid gridline — use X 15 through X 19 only.":"Invalid gridline — use Y 36 through Y 40 only.";return;
-  }
-  const dir=axis==="y"?(keep==="low"?"north":"south"):(keep==="low"?"west":"east");
-  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`,questionCostFor("grid"));
-};'''
-          new_apply = '''document.getElementById("applySplit").onclick=()=>{
-  const axis=document.getElementById("axis").value,value=axis==="x"?1700:3700,keep=document.getElementById("splitAnswer").value;
-  document.getElementById("splitValidation").textContent="";
-  const dir=axis==="y"?(keep==="low"?"north":"south"):(keep==="low"?"west":"east");
-  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`,questionCostFor("grid"));
-};'''
-          replace_once(old_apply, new_apply, 'fixed centerline application')
+          apply='\n'.join([
+              'document.getElementById("applySplit").onclick=()=>{',
+              '  const axis=document.getElementById("axis").value,value=axis==="x"?1700:3700,keep=document.getElementById("splitAnswer").value;',
+              '  document.getElementById("splitValidation").textContent="";',
+              '  const dir=axis==="y"?(keep==="low"?"north":"south"):(keep==="low"?"west":"east");',
+              '  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`,questionCostFor("grid"));',
+              '};'
+          ])
+          s,n=re.subn(r'document\.getElementById\("applySplit"\)\.onclick=\(\)=>\{.*?\n\};',apply,s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit(f'fixed centerline application: expected 1 match, found {n}')
 
-          # Rename the user-facing question type everywhere without touching internal state keys.
-          s = s.replace('Gridline', 'Centerline')
+          s=s.replace('Gridline','Centerline')
 
-          changelog_anchor = '''      <div class="changeEntry">
-        <h4>v1.1.4 — Waypoint naming + settings cleanup</h4>'''
-          changelog_entry = '''      <div class="changeEntry">
-        <h4>v1.2.0 — Multiplayer rooms + live gameplay</h4>
-        <ul>
-          <li>Added shared multiplayer rooms with one Hider and multiple Seekers.</li>
-          <li>Added synchronized match state, question history, seeker points, and question cooldowns.</li>
-          <li>Added forced relocation with private Hider tracking, adaptive movement targets, and Ready confirmation.</li>
-          <li>Added distinct Web Audio feedback for unlocks, cooldown completion, relocations, and match controls.</li>
-          <li>Rebalanced the old Gridline question into fixed centerlines at Y 3700 and X 1700.</li>
-        </ul>
-      </div>
+          anchor='      <div class="changeEntry">\n        <h4>v1.1.4 — Waypoint naming + settings cleanup</h4>'
+          entry='\n'.join([
+              '      <div class="changeEntry">',
+              '        <h4>v1.2.0 — Multiplayer rooms + live gameplay</h4>',
+              '        <ul>',
+              '          <li>Added shared multiplayer rooms with one Hider and multiple Seekers.</li>',
+              '          <li>Added synchronized match state, question history, seeker points, and question cooldowns.</li>',
+              '          <li>Added forced relocation with private Hider tracking, adaptive movement targets, and Ready confirmation.</li>',
+              '          <li>Added distinct Web Audio feedback for unlocks, cooldown completion, relocations, and match controls.</li>',
+              '          <li>Rebalanced the old Gridline question into fixed centerlines at Y 3700 and X 1700.</li>',
+              '        </ul>',
+              '      </div>',
+              ''
+          ])
+          if s.count(anchor)!=1:
+              raise SystemExit('changelog anchor missing or duplicated')
+          s=s.replace(anchor,entry+anchor,1)
+          p.write_text(s,encoding='utf-8')
 
-'''
-          if changelog_anchor not in s:
-              raise SystemExit('changelog anchor missing')
-          s = s.replace(changelog_anchor, changelog_entry + changelog_anchor, 1)
-
-          p.write_text(s, encoding='utf-8')
-
-          Path('version.json').write_text('''{\n  "version": "1.2.0",\n  "released": "2026-08-26"\n}\n''', encoding='utf-8')
-
-          cp = Path('CHANGELOG.txt')
+          Path('version.json').write_text('{\n  "version": "1.2.0",\n  "released": "2026-08-26"\n}\n',encoding='utf-8')
+          cp=Path('CHANGELOG.txt')
           if cp.exists():
-              old = cp.read_text(encoding='utf-8')
-              header = '''v1.2.0 — Multiplayer rooms + live gameplay\n- Multiplayer rooms: one Hider, multiple Seekers.\n- Shared match timer, questions, constraints, cooldowns, and seeker points.\n- Forced relocation with private Hider tracking, adaptive targets, and Ready confirmation.\n- Web Audio feedback for major gameplay events.\n- Gridline rebalanced to fixed centerlines: horizontal Y 3700 and vertical X 1700.\n\n'''
+              old=cp.read_text(encoding='utf-8')
+              header='\n'.join([
+                  'v1.2.0 — Multiplayer rooms + live gameplay',
+                  '- Multiplayer rooms: one Hider, multiple Seekers.',
+                  '- Shared match timer, questions, constraints, cooldowns, and seeker points.',
+                  '- Forced relocation with private Hider tracking, adaptive targets, and Ready confirmation.',
+                  '- Web Audio feedback for major gameplay events.',
+                  '- Gridline rebalanced to fixed centerlines: horizontal Y 3700 and vertical X 1700.',
+                  '',
+                  ''
+              ])
               if not old.startswith('v1.2.0'):
-                  cp.write_text(header + old, encoding='utf-8')
+                  cp.write_text(header+old,encoding='utf-8')
           PY
 
       - name: Validate source build
@@ -162,8 +137,8 @@ jobs:
           from pathlib import Path
           s=Path('index.html').read_text(encoding='utf-8')
           start=s.index('<script>')+len('<script>')
-          end=s.index('</script>', start)
-          Path('/tmp/app.js').write_text(s[start:end], encoding='utf-8')
+          end=s.index('</script>',start)
+          Path('/tmp/app.js').write_text(s[start:end],encoding='utf-8')
           assert 'id="splitValue"' not in s
           assert 'Horizontal centerline — Y 3700' in s
           assert 'Vertical centerline — X 1700' in s
@@ -192,16 +167,14 @@ jobs:
           git show "$SOURCE_SHA:firebase-config.js" > firebase-config.js
           git show "$SOURCE_SHA:version.json" > version.json
           git show "$SOURCE_SHA:CHANGELOG.txt" > CHANGELOG.txt
-
           mkdir -p rooms-preview
           cp index.html rooms-preview/index.html
           python3 - <<'PY'
           from pathlib import Path
           p=Path('rooms-preview/index.html')
           s=p.read_text(encoding='utf-8')
-          count=s.count('src="big-walk-map.png"')
-          if count != 1:
-              raise SystemExit(f'preview map path: expected 1 source match, found {count}')
+          if s.count('src="big-walk-map.png"')!=1:
+              raise SystemExit('preview map source path assertion failed')
           p.write_text(s.replace('src="big-walk-map.png"','src="../big-walk-map.png"',1),encoding='utf-8')
           PY
           cp rooms.js rooms-preview/rooms.js
@@ -216,9 +189,7 @@ jobs:
               s=Path(name).read_text(encoding='utf-8')
               start=s.index('<script>')+len('<script>')
               end=s.index('</script>',start)
-              out='/tmp/'+name.replace('/','_')+'.js'
-              Path(out).write_text(s[start:end],encoding='utf-8')
-              print(out)
+              Path('/tmp/'+name.replace('/','_')+'.js').write_text(s[start:end],encoding='utf-8')
           root=Path('index.html').read_text(encoding='utf-8')
           preview=Path('rooms-preview/index.html').read_text(encoding='utf-8')
           assert 'src="big-walk-map.png"' in root
