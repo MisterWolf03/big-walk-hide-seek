@@ -1,4 +1,4 @@
-BIG WALK HIDE + SEEK — PROTOTYPE 1.1.0
+BIG WALK HIDE + SEEK — PROTOTYPE 1.1.1
 
 HOW TO RUN
 1. Unzip the folder.
@@ -111,6 +111,12 @@ WHAT CHANGED IN 1.0.2
 - Added live-location integration with BigWalkLivePosition v0.2.0.
 - Connect from Map Tools to create a LIVE YOU marker that follows your player.
 - Live marker can be used as the active reference marker for questions.
+
+
+WHAT CHANGED IN 1.1.1
+---------------------
+- Added a dedicated landmark visibility toggle in Settings > Map display.
+- Towers and landmarks can now be hidden or shown independently.
 
 
 WHAT CHANGED IN 1.1.0

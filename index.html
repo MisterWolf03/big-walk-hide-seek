@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Big Walk Hide + Seek — Prototype 1.1.0</title>
+<title>Big Walk Hide + Seek — Prototype 1.1.1</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#181d24; --panel2:#222934; --line:#303947;
@@ -520,8 +520,9 @@
         </div>
         <div class="row" style="margin-top:8px">
           <button id="towerBtn">Hide towers</button>
-          <button id="calBtn">Calibration debug</button>
+          <button id="landmarkBtn">Hide landmarks</button>
         </div>
+        <button id="calBtn" style="margin-top:8px">Calibration debug</button>
       </section>
 
       <section>
@@ -549,6 +550,14 @@
 
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
+
+      <div class="changeEntry">
+        <h4>v1.1.1 — Map display toggles</h4>
+        <ul>
+          <li>Added a dedicated landmark visibility toggle in Settings → Map display.</li>
+          <li>Towers and landmarks can now be hidden or shown independently.</li>
+        </ul>
+      </div>
 
       <div class="changeEntry">
         <h4>v1.1.0 — Hosted website support</h4>
@@ -664,7 +673,7 @@
 </div>
 
 <script>
-const APP_VERSION="1.1.0";
+const APP_VERSION="1.1.1";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -706,7 +715,7 @@ const coordTip=document.getElementById("coordTip");
 const panel=document.getElementById("panel");
 
 let activeTab="game", panelVisible=true;
-let showGrid=true, showTowers=true, showCalibration=false, showTowerRegions=false;
+let showGrid=true, showTowers=true, showLandmarks=true, showCalibration=false, showTowerRegions=false;
 let constraints=[], historyText=[];
 let view={scale:1,ox:0,oy:0};
 let dragging=false,last={x:0,y:0},pointerDownPos=null,movedSinceDown=false;
@@ -1053,7 +1062,7 @@ function draw(){
   if(showTowerRegions)drawTowerRegions();
   if(showGrid)drawGrid();
   if(showTowers)drawTowers();
-  drawLandmarks();
+  if(showLandmarks)drawLandmarks();
   drawPlayerMarker();drawRuler();
   if(showCalibration)drawCalibration();
   renderHistory();
@@ -1609,6 +1618,9 @@ document.getElementById("gridBtn").onclick=()=>{
 };
 document.getElementById("towerBtn").onclick=()=>{
   showTowers=!showTowers;document.getElementById("towerBtn").textContent=showTowers?"Hide towers":"Show towers";draw();
+};
+document.getElementById("landmarkBtn").onclick=()=>{
+  showLandmarks=!showLandmarks;document.getElementById("landmarkBtn").textContent=showLandmarks?"Hide landmarks":"Show landmarks";draw();
 };
 document.getElementById("calBtn").onclick=()=>{showCalibration=!showCalibration;draw();};
 
