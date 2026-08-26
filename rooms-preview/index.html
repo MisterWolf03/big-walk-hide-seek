@@ -913,6 +913,7 @@ const pointsPerMinute=1;
 let relocationSettings={firstAt:1500,interval:1200,window:180,minDistance:250,skipBelow:75};
 let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
 let localRelocationPlan=null,relocationMutationBusy=false;
+let relocationSchedulerError="";
 let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
 let testingUnlockOverride=false;
 
@@ -1078,6 +1079,8 @@ function updateQuestionEconomy(){
 
 function roomRole(){return window.BigWalkRooms?.getRole?.()||null;}
 function isRoomHider(){return roomModeConnected()&&roomRole()==="hider";}
+function roomMatchRunning(){return roomModeConnected()?!!window.BigWalkRooms?.isMatchRunning?.():matchRunning;}
+function roomCanDriveRelocation(){return roomModeConnected()&&(!!window.BigWalkRooms?.isHost?.()||roomRole()==="seeker");}
 function resetLocalRelocationPlan(){localRelocationPlan=null;}
 function relocationCellKey(x,y){return `${x},${y}`;}
 function buildRelocationPlan(start){
@@ -1136,7 +1139,7 @@ function updateLocalRelocation(){
   if(displacement>=plan.target&&pointInRelocationRegion(current,plan))signalRelocationResult("completed");
 }
 async function maybeHostAdvanceRelocation(){
-  if(!roomModeConnected()||!window.BigWalkRooms?.isHost?.()||relocationMutationBusy||!matchRunning)return;
+  if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning())return;
   const now=currentMatchSeconds();
   if(relocationState.active){
     const signal=window.BigWalkRooms?.getHiderRelocationSignal?.();
@@ -1189,8 +1192,23 @@ function updateRelocationUi(){
     }
   }else{
     const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);
-    headline.textContent=formatTime(next);status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:"Waiting";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";
-    message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;
+    headline.textContent=formatTime(next);target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";
+    if(relocationSchedulerError){
+      status.textContent="Scheduler error";
+      message.textContent=`Could not start relocation: ${relocationSchedulerError}`;
+    }else if(!window.BigWalkRooms?.hasHider?.()){
+      status.textContent="Waiting for Hider";
+      message.textContent=next<=.01?"Relocation is due, but there is no Hider currently in the room.":`Next relocation in ${formatTime(next)}. A Hider must be in the room when it becomes due.`;
+    }else if(!roomMatchRunning()){
+      status.textContent="Match paused";
+      message.textContent="The relocation clock will resume when the shared match resumes.";
+    }else if(next<=.01){
+      status.textContent="Starting…";
+      message.textContent="Relocation is due and the room is starting it now.";
+    }else{
+      status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:"Waiting";
+      message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;
+    }
   }
 }
 
@@ -1468,7 +1486,10 @@ function renderMatchTimer(){
 }
 function tickMatchTimer(){
   if(roomModeConnected()){
-    maybeHostAdvanceRelocation().catch(err=>console.warn("Relocation state update failed",err));
+    maybeHostAdvanceRelocation().then(()=>{relocationSchedulerError="";}).catch(err=>{
+      relocationSchedulerError=String(err?.message||err);
+      console.warn("Relocation state update failed",err);
+    });
     renderMatchTimer();return;
   }
   if(!matchRunning)return;
