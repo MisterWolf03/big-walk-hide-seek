@@ -1,0 +1,412 @@
+name: Gameplay economy pass
+on:
+  push:
+    branches: [v1.2.0-rooms]
+    paths: [.github/workflows/gameplay-economy-pass.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1.2.0-rooms
+          fetch-depth: 0
+      - name: Patch one-hider guard and seeker economy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def once(text, old, new, label):
+              if text.count(old) != 1:
+                  raise SystemExit(f"{label}: expected exactly 1 match, found {text.count(old)}")
+              return text.replace(old, new, 1)
+
+          # ---- rooms.js: reject a second hider ----
+          p = Path('rooms.js')
+          s = p.read_text()
+          s = once(s,
+          '''async function roomExists(code){
+            const {dbMod} = firebase;
+            const snap = await dbMod.get(dbMod.ref(db, `rooms/${code}/meta`));
+            return snap.exists();
+          }
+          ''',
+          '''async function roomExists(code){
+            const {dbMod} = firebase;
+            const snap = await dbMod.get(dbMod.ref(db, `rooms/${code}/meta`));
+            return snap.exists();
+          }
+          async function roomHasOtherHider(code){
+            const {dbMod} = firebase;
+            const snap = await dbMod.get(dbMod.ref(db, `rooms/${code}/members`));
+            const members = snap.val() || {};
+            return Object.entries(members).some(([uid, member]) => uid !== user?.uid && member?.role === "hider");
+          }
+          ''', 'rooms add hider lookup')
+
+          s = once(s,
+          '''    if(!(await roomExists(code))) throw new Error("Room not found. Check the code and try again.");
+              await connectToRoom(code, safeName(ui.nameInput.value), ui.roleInput.value === "hider" ? "hider" : "seeker", false);
+          ''',
+          '''    if(!(await roomExists(code))) throw new Error("Room not found. Check the code and try again.");
+              const role = ui.roleInput.value === "hider" ? "hider" : "seeker";
+              if(role === "hider" && await roomHasOtherHider(code)){
+                throw new Error("This room already has a hider. Join as a seeker instead.");
+              }
+              await connectToRoom(code, safeName(ui.nameInput.value), role, false);
+          ''', 'rooms join hider guard')
+
+          s = once(s,
+          '''    if(await roomExists(code)) await connectToRoom(code, safeName(saved.displayName), saved.role === "hider" ? "hider" : "seeker", false);
+              else clearSession();
+          ''',
+          '''    if(await roomExists(code)){
+                const role = saved.role === "hider" ? "hider" : "seeker";
+                if(role === "hider" && await roomHasOtherHider(code)){
+                  clearSession();
+                  setStatus("This room already has a hider. Rejoin as a seeker.", "warning");
+                }else{
+                  await connectToRoom(code, safeName(saved.displayName), role, false);
+                }
+              }else clearSession();
+          ''', 'rooms restore hider guard')
+          p.write_text(s)
+
+          # ---- index.html: seeker point economy ----
+          p = Path('index.html')
+          s = p.read_text()
+
+          s = once(s,
+          '''  .questionCard{position:relative}
+            .questionCard.locked{opacity:.64}
+          ''',
+          '''  .questionCard{position:relative}
+            .questionCard.locked{opacity:.64}
+            .questionCost{font-size:11px;font-weight:800;color:#ffe391;margin:-4px 0 9px}
+            .questionCost.cantAfford{color:#ffadad}
+            .pointsBig{text-align:center;font-size:34px;font-weight:900;color:#ffe58b;margin:2px 0 8px}
+          ''', 'economy css')
+
+          s = once(s,
+          '''      <section>
+                  <h3>Question unlocks</h3>
+          ''',
+          '''      <section>
+                  <h3>Seeker points</h3>
+                  <div class="pointsBig" id="seekerPointsBalance">0</div>
+                  <div class="metric"><b>Earn rate</b><span id="seekerPointsRate">+1 point / minute</span></div>
+                  <div class="metric"><b>Total earned</b><span id="seekerPointsEarned">0</span></div>
+                  <div class="metric"><b>Total spent</b><span id="seekerPointsSpent">0</span></div>
+                  <div id="questionPointsStatus" class="miniStatus"></div>
+                  <p class="small">Points accrue only from match time. More precise questions cost more, so seekers can spend now or save for stronger information later.</p>
+                </section>
+
+                <section>
+                  <h3>Question unlocks</h3>
+          ''', 'game points panel')
+
+          for old, new, label in [
+              ('<h3>Gridline</h3>\n        <div class="lockNotice" id="gridLockNotice">Locked.</div>', '<h3>Gridline</h3>\n        <div class="questionCost" id="gridQuestionCost">Cost: 4 points</div>\n        <div class="lockNotice" id="gridLockNotice">Locked.</div>', 'grid cost ui'),
+              ('<h3>Nearest tower</h3>\n        <div class="lockNotice" id="nearestLockNotice">Locked.</div>', '<h3>Nearest tower</h3>\n        <div class="questionCost" id="nearestQuestionCost">Cost: 5 points</div>\n        <div class="lockNotice" id="nearestLockNotice">Locked.</div>', 'nearest cost ui'),
+              ('<h3>Tower radius</h3>\n        <div class="lockNotice" id="towerRadiusLockNotice">Locked.</div>', '<h3>Tower radius</h3>\n        <div class="questionCost" id="towerRadiusQuestionCost">Cost: 4 points</div>\n        <div class="lockNotice" id="towerRadiusLockNotice">Locked.</div>', 'tower cost ui'),
+              ('<h3>Landmark</h3>\n        <div class="lockNotice" id="landmarkLockNotice">Locked.</div>', '<h3>Landmark</h3>\n        <div class="questionCost" id="landmarkQuestionCost">Cost: 6 points</div>\n        <div class="lockNotice" id="landmarkLockNotice">Locked.</div>', 'landmark cost ui'),
+              ('<h3>From active marker</h3>\n        <div class="lockNotice" id="markerLockNotice">Locked.</div>', '<h3>From active marker</h3>\n        <div class="questionCost" id="markerQuestionCost">Cost: 5 points</div>\n        <div class="lockNotice" id="markerLockNotice">Locked.</div>', 'marker cost ui'),
+          ]:
+              s = once(s, old, new, label)
+
+          s = once(s,
+          '''let questionCooldownSeconds=300;
+          let questionCooldownUntil=0;
+          let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
+          ''',
+          '''let questionCooldownSeconds=300;
+          let questionCooldownUntil=0;
+          let seekerPointsSpent=0;
+          const pointsPerMinute=1;
+          let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
+          ''', 'economy vars')
+
+          s = once(s,
+          '''function formatTime(totalSeconds){
+            totalSeconds=Math.max(0,Math.floor(totalSeconds));
+            const m=Math.floor(totalSeconds/60),s=totalSeconds%60;
+            return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+          }
+          ''',
+          '''function formatTime(totalSeconds){
+            totalSeconds=Math.max(0,Math.floor(totalSeconds));
+            const m=Math.floor(totalSeconds/60),s=totalSeconds%60;
+            return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+          }
+          function seekerPointsEarned(){return Math.floor(currentMatchSeconds()/60)*pointsPerMinute;}
+          function seekerPointsBalance(){return Math.max(0,seekerPointsEarned()-seekerPointsSpent);}
+          function towerRadiusCost(radius){
+            radius=Number(radius);
+            if(radius>=500)return 4;
+            if(radius>=400)return 5;
+            if(radius>=300)return 7;
+            return 9;
+          }
+          function landmarkRadiusCost(radius){
+            radius=Number(radius);
+            if(radius>=500)return 4;
+            if(radius>=400)return 5;
+            if(radius>=300)return 6;
+            if(radius>=200)return 8;
+            return 10;
+          }
+          function markerRadiusCost(radius){
+            radius=Number(radius);
+            if(radius>=500)return 5;
+            if(radius>=400)return 6;
+            if(radius>=300)return 8;
+            return 10;
+          }
+          function questionCostFor(key){
+            if(key==="grid")return 4;
+            if(key==="nearest")return 5;
+            if(key==="towerRadius")return towerRadiusCost(document.getElementById("radarRadius").value);
+            if(key==="landmark")return document.getElementById("landmarkQuestionType").value==="nearest"?6:landmarkRadiusCost(document.getElementById("landmarkRadius").value);
+            if(key==="marker")return document.getElementById("markerQuestionType").value==="direction"?8:markerRadiusCost(document.getElementById("markerRadius").value);
+            return 0;
+          }
+          function setQuestionPointMessage(text,warning=false){
+            const el=document.getElementById("questionPointsStatus");
+            if(!el)return;
+            el.textContent=text||"";
+            el.style.color=warning?"#ffadad":"";
+          }
+          function updateSeekerPointsDisplay(){
+            const earned=seekerPointsEarned(),balance=seekerPointsBalance();
+            document.getElementById("seekerPointsBalance").textContent=testingUnlockOverride?`${balance} (bypass)`:String(balance);
+            document.getElementById("seekerPointsEarned").textContent=String(earned);
+            document.getElementById("seekerPointsSpent").textContent=String(seekerPointsSpent);
+            document.getElementById("seekerPointsRate").textContent=`+${pointsPerMinute} point${pointsPerMinute===1?"":"s"} / minute`;
+          }
+          function updateQuestionEconomy(){
+            updateSeekerPointsDisplay();
+            const balance=seekerPointsBalance();
+            const rows=[
+              ["gridQuestionSection","applySplit","gridQuestionCost","grid"],
+              ["nearestQuestionSection","applyNearest","nearestQuestionCost","nearest"],
+              ["towerRadiusQuestionSection","applyRadar","towerRadiusQuestionCost","towerRadius"],
+              ["landmarkQuestionSection","applyLandmarkQuestion","landmarkQuestionCost","landmark"],
+              ["markerQuestionSection","applyMarkerQuestion","markerQuestionCost","marker"],
+            ];
+            for(const [sectionId,buttonId,costId,key] of rows){
+              const cost=questionCostFor(key),section=document.getElementById(sectionId),button=document.getElementById(buttonId),costEl=document.getElementById(costId);
+              const affordable=testingUnlockOverride||balance>=cost;
+              costEl.textContent=`Cost: ${cost} point${cost===1?"":"s"}${testingUnlockOverride?" · testing bypass":""}`;
+              costEl.classList.toggle("cantAfford",!affordable);
+              let disabled=section.classList.contains("locked")||!affordable;
+              if(key==="marker"&&!getActiveMarker())disabled=true;
+              button.disabled=disabled;
+            }
+          }
+          ''', 'economy functions')
+
+          s = once(s,
+          '''return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},questionCooldownSeconds:Number(questionCooldownSeconds||300)};
+          ''',
+          '''return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},questionCooldownSeconds:Number(questionCooldownSeconds||300),seekerPointsSpent:Number(seekerPointsSpent||0)};
+          ''', 'bridge points state')
+
+          s = once(s,
+          '''      if(Number.isFinite(Number(game.questionCooldownSeconds))&&Number(game.questionCooldownSeconds)>0)questionCooldownSeconds=Number(game.questionCooldownSeconds);
+                const match=state?.match;
+          ''',
+          '''      if(Number.isFinite(Number(game.questionCooldownSeconds))&&Number(game.questionCooldownSeconds)>0)questionCooldownSeconds=Number(game.questionCooldownSeconds);
+                seekerPointsSpent=Math.max(0,Number(game.seekerPointsSpent||0));
+                const match=state?.match;
+          ''', 'bridge apply points')
+
+          s = once(s,
+          '''      matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;
+                constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null;rulerB=null;
+          ''',
+          '''      matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;seekerPointsSpent=0;
+                constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null;rulerB=null;
+          ''', 'room reset points')
+
+          s = once(s,
+          '''  updateCooldownDisplay();
+          }
+          function updateMilestones(){
+          ''',
+          '''  updateCooldownDisplay();
+            updateQuestionEconomy();
+          }
+          function updateMilestones(){
+          ''', 'economy lock refresh')
+
+          s = once(s,
+          '''  document.getElementById("topTimerClock").textContent=time;
+            updateQuestionLocks();updateMilestones();updateRuleTimes();
+          ''',
+          '''  document.getElementById("topTimerClock").textContent=time;
+            updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();
+          ''', 'timer points refresh')
+
+          s = once(s,
+          '''  matchRunning=false;matchElapsedMs=0;matchLastTick=null;
+            questionCooldownUntil=0;
+          ''',
+          '''  matchRunning=false;matchElapsedMs=0;matchLastTick=null;
+            questionCooldownUntil=0;seekerPointsSpent=0;
+          ''', 'local reset points')
+
+          s = once(s,
+          '''function addConstraint(c,text){
+            if(!roomCanEditSharedGame())return;
+            constraints.push(c);
+            historyText.push(text);
+            startQuestionCooldown();
+            draw();
+            renderMatchTimer();
+            notifyRoomGameStateChanged();
+          }
+          ''',
+          '''function addConstraint(c,text,cost=0){
+            if(!roomCanEditSharedGame())return false;
+            cost=Math.max(0,Number(cost||0));
+            if(!testingUnlockOverride&&seekerPointsBalance()<cost){
+              setQuestionPointMessage(`Need ${cost} points, but seekers only have ${seekerPointsBalance()}.`,true);
+              updateQuestionLocks();
+              return false;
+            }
+            const charged=testingUnlockOverride?0:cost;
+            constraints.push({...c,_pointsCost:charged});
+            historyText.push(text);
+            seekerPointsSpent+=charged;
+            setQuestionPointMessage(charged?`Spent ${charged} points on the last question.`:"Testing bypass: no points spent.");
+            startQuestionCooldown();
+            draw();
+            renderMatchTimer();
+            notifyRoomGameStateChanged();
+            return true;
+          }
+          ''', 'charge points')
+
+          s = once(s,
+          '''  constraints.pop();
+            historyText.pop();
+            cancelQuestionCooldown();
+          ''',
+          '''  const removed=constraints.pop();
+            historyText.pop();
+            seekerPointsSpent=Math.max(0,seekerPointsSpent-Number(removed?._pointsCost||0));
+            setQuestionPointMessage(Number(removed?._pointsCost||0)?`Refunded ${Number(removed._pointsCost)} points from the undone question.`:"");
+            cancelQuestionCooldown();
+          ''', 'undo refund')
+
+          s = once(s,
+          '''  constraints=[];
+            historyText=[];
+            cancelQuestionCooldown();
+          ''',
+          '''  constraints=[];
+            historyText=[];
+            seekerPointsSpent=0;
+            setQuestionPointMessage("Question history cleared; spent points refunded.");
+            cancelQuestionCooldown();
+          ''', 'clear refund')
+
+          s = once(s,
+          '''  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`);
+          ''',
+          '''  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`,questionCostFor("grid"));
+          ''', 'grid charge')
+          s = once(s,
+          '''  addConstraint({type:"nearest",tower},`Closest tower: ${tower}.`);
+          ''',
+          '''  addConstraint({type:"nearest",tower},`Closest tower: ${tower}.`,questionCostFor("nearest"));
+          ''', 'nearest charge')
+          s = once(s,
+          '''  addConstraint({type:"radar",tower,radius,keep},`${keep==="inside"?"Within":"Outside"} ${radius} units of ${tower} Tower.`);
+          ''',
+          '''  addConstraint({type:"radar",tower,radius,keep},`${keep==="inside"?"Within":"Outside"} ${radius} units of ${tower} Tower.`,questionCostFor("towerRadius"));
+          ''', 'tower charge')
+          s = once(s,
+          '''    addConstraint({type:"nearestLandmark",landmark},`Closest landmark: ${landmark}.`);
+          ''',
+          '''    addConstraint({type:"nearestLandmark",landmark},`Closest landmark: ${landmark}.`,questionCostFor("landmark"));
+          ''', 'landmark nearest charge')
+          s = once(s,
+          '''    addConstraint({type:"landmarkRadar",landmark,radius,keep},`${keep==="inside"?"Within":"Outside"} ${radius} units of ${landmark}.`);
+          ''',
+          '''    addConstraint({type:"landmarkRadar",landmark,radius,keep},`${keep==="inside"?"Within":"Outside"} ${radius} units of ${landmark}.`,questionCostFor("landmark"));
+          ''', 'landmark radius charge')
+          s = once(s,
+          '''    addConstraint({type:"markerRadar",x:active.x,y:active.y,radius,keep},
+                `${keep==="inside"?"Within":"Outside"} ${radius} units of ${markerDisplayName(active)} at ${formatYX(active)}.`);
+          ''',
+          '''    addConstraint({type:"markerRadar",x:active.x,y:active.y,radius,keep},
+                `${keep==="inside"?"Within":"Outside"} ${radius} units of ${markerDisplayName(active)} at ${formatYX(active)}.`,questionCostFor("marker"));
+          ''', 'marker radius charge')
+          s = once(s,
+          '''    addConstraint({type:"markerDirection",x:active.x,y:active.y,dir},
+                `Hider is ${dir} of ${markerDisplayName(active)} at ${formatYX(active)}.`);
+          ''',
+          '''    addConstraint({type:"markerDirection",x:active.x,y:active.y,dir},
+                `Hider is ${dir} of ${markerDisplayName(active)} at ${formatYX(active)}.`,questionCostFor("marker"));
+          ''', 'marker direction charge')
+
+          s = once(s,
+          '''document.getElementById("landmarkQuestionType").onchange=e=>{
+            const nearest=e.target.value==="nearest";
+          ''',
+          '''document.getElementById("landmarkQuestionType").onchange=e=>{
+            const nearest=e.target.value==="nearest";
+          ''', 'landmark onchange anchor')
+          # Add dynamic cost refreshes without disturbing existing behavior.
+          s = once(s,
+          '''  document.getElementById("landmarkQuestionValidation").textContent="";
+          };
+          document.getElementById("applyLandmarkQuestion").onclick=()=>{
+          ''',
+          '''  document.getElementById("landmarkQuestionValidation").textContent="";
+            updateQuestionEconomy();
+          };
+          document.getElementById("landmarkRadius").addEventListener("input",updateQuestionEconomy);
+          document.getElementById("radarRadius").addEventListener("input",updateQuestionEconomy);
+          document.getElementById("markerRadius").addEventListener("input",updateQuestionEconomy);
+          document.getElementById("applyLandmarkQuestion").onclick=()=>{
+          ''', 'dynamic radius costs')
+          s = once(s,
+          '''  document.getElementById("markerQuestionValidation").textContent="";
+          };
+          document.getElementById("applyMarkerQuestion").onclick=()=>{
+          ''',
+          '''  document.getElementById("markerQuestionValidation").textContent="";
+            updateQuestionEconomy();
+          };
+          document.getElementById("applyMarkerQuestion").onclick=()=>{
+          ''', 'marker type cost refresh')
+
+          p.write_text(s)
+          PY
+      - name: Validate scripts and diff
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+          text=Path('index.html').read_text()
+          scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',text,re.S)
+          if not scripts: raise SystemExit('No inline scripts found')
+          Path('/tmp/bigwalk-inline.js').write_text('\n'.join(scripts))
+          PY
+          node --check /tmp/bigwalk-inline.js
+          node --check rooms.js
+          git diff --check
+          grep -q 'Seeker points' index.html
+          grep -q 'roomHasOtherHider' rooms.js
+      - name: Commit gameplay economy pass
+        run: |
+          rm .github/workflows/gameplay-economy-pass.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html rooms.js .github/workflows/gameplay-economy-pass.yml
+          git commit -m 'Add seeker points and single-hider guard'
+          git push origin HEAD:v1.2.0-rooms
