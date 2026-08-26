@@ -680,7 +680,7 @@
         </div>
         <button class="primary" id="applyRelocationSettingsBtn" style="margin-top:8px">Apply relocation settings</button>
         <div id="relocationSettingsValidation" class="validation"></div>
-        <p class="small">The hider must end at least the target displacement from where relocation began. If the connected legal search area is too small, the hider's browser scales the target to 80% of the available displacement; extremely cramped areas skip relocation.</p>
+        <p class="small">The hider must end at least the target displacement from where relocation began. To avoid forcing edge-of-zone hiding, the target is capped at roughly 80% of the maximum displacement available in the connected legal search area; extremely cramped areas skip relocation.</p>
       </section>
 
       <section>
@@ -1108,8 +1108,8 @@ function buildRelocationPlan(start){
     }
   }
   if(maxDistance<relocationSettings.skipBelow)return {index:relocationState.index,start,step,seen,maxDistance,target:0,skip:true,signaled:false};
-  let target=relocationSettings.minDistance;
-  if(maxDistance<target)target=Math.max(25,Math.floor((maxDistance*.8)/25)*25);
+  const headroomTarget=Math.max(25,Math.floor((maxDistance*.8)/25)*25);
+  const target=Math.min(relocationSettings.minDistance,headroomTarget);
   return {index:relocationState.index,start,step,seen,maxDistance,target,skip:false,signaled:false};
 }
 function pointInRelocationRegion(p,plan){
