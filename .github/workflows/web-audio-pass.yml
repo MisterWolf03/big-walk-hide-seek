@@ -1,0 +1,95 @@
+name: Web Audio gameplay sounds
+on:
+  push:
+    branches: [v1.2.0-rooms]
+    paths: [.github/workflows/web-audio-pass.yml]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1.2.0-rooms
+          fetch-depth: 0
+      - name: Add Web Audio gameplay feedback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def once(s, old, new, label):
+              n=s.count(old)
+              if n!=1: raise SystemExit(f'{label}: expected 1 match, found {n}')
+              return s.replace(old,new,1)
+
+          def patch(path):
+              p=Path(path); s=p.read_text()
+
+              s=once(s,
+              '''      <section>\n        <h3>Development / testing</h3>\n        <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>\n        <p class="small">Does not change the match timer.</p>\n      </section>\n''',
+              '''      <section>\n        <h3>Sound</h3>\n        <label><input id="soundEnabled" type="checkbox" style="width:auto;margin-right:6px" checked> Sound effects</label>\n        <label>Volume\n          <input id="soundVolume" type="range" min="0" max="100" step="5" value="60">\n        </label>\n        <div class="metric"><b>Output level</b><span id="soundVolumeValue">60%</span></div>\n        <button id="testSoundBtn" style="margin-top:8px">Test sound</button>\n        <p class="small">Gameplay cues are generated locally with Web Audio. After a refresh, your browser may require one click before it allows sound.</p>\n      </section>\n\n      <section>\n        <h3>Development / testing</h3>\n        <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>\n        <p class="small">Does not change the match timer.</p>\n      </section>\n''','sound settings UI')
+
+              s=once(s,
+              '''let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;\nlet testingUnlockOverride=false;\n\nconst panModeBtn=document.getElementById("panModeBtn");\n''',
+              '''let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;\nlet testingUnlockOverride=false;\n\nconst SOUND_STORAGE_KEY="bigwalkSoundSettingsV1";\nlet soundSettings={enabled:true,volume:.6};\ntry{\n  const saved=JSON.parse(localStorage.getItem(SOUND_STORAGE_KEY)||"null");\n  if(saved&&typeof saved==="object"){\n    if(typeof saved.enabled==="boolean")soundSettings.enabled=saved.enabled;\n    if(Number.isFinite(Number(saved.volume)))soundSettings.volume=Math.max(0,Math.min(1,Number(saved.volume)));\n  }\n}catch{}\nlet gameAudioContext=null,audioEventSnapshot=null;\n\nfunction saveSoundSettings(){\n  try{localStorage.setItem(SOUND_STORAGE_KEY,JSON.stringify(soundSettings));}catch{}\n}\nfunction ensureGameAudioContext(){\n  const AudioCtx=window.AudioContext||window.webkitAudioContext;\n  if(!AudioCtx)return null;\n  if(!gameAudioContext)gameAudioContext=new AudioCtx();\n  if(gameAudioContext.state==="suspended")gameAudioContext.resume().catch(()=>{});\n  return gameAudioContext;\n}\nfunction scheduleGameTone(ctx,freq,offset,duration,level=.7,type="sine"){\n  const t=ctx.currentTime+Math.max(0,offset),end=t+duration;\n  const osc=ctx.createOscillator(),gain=ctx.createGain();\n  osc.type=type;osc.frequency.setValueAtTime(freq,t);\n  const peak=Math.max(.0001,soundSettings.volume*.16*level);\n  gain.gain.setValueAtTime(.0001,t);\n  gain.gain.exponentialRampToValueAtTime(peak,t+.012);\n  gain.gain.exponentialRampToValueAtTime(.0001,end);\n  osc.connect(gain);gain.connect(ctx.destination);osc.start(t);osc.stop(end+.025);\n}\nfunction playGameSound(name){\n  if(!soundSettings.enabled||soundSettings.volume<=0)return;\n  const ctx=ensureGameAudioContext();if(!ctx)return;\n  const tone=(f,o,d,l=.7,t="sine")=>scheduleGameTone(ctx,f,o,d,l,t);\n  if(name==="questionUnlock"){tone(659,.00,.13,.65,"triangle");tone(880,.10,.22,.8,"sine");}\n  else if(name==="cooldownReady"){tone(523,.00,.10,.65,"triangle");tone(784,.08,.18,.75,"sine");}\n  else if(name==="relocationStart"){tone(220,.00,.16,.9,"square");tone(165,.19,.16,.85,"square");tone(220,.38,.22,.95,"square");}\n  else if(name==="relocationReady"){tone(440,.00,.10,.55,"triangle");tone(660,.09,.11,.65,"triangle");tone(880,.18,.20,.8,"sine");}\n  else if(name==="relocationComplete"){tone(392,.00,.11,.55,"triangle");tone(523,.09,.13,.65,"triangle");tone(659,.19,.24,.8,"sine");}\n  else if(name==="matchStart"){tone(330,.00,.12,.55,"sine");tone(440,.10,.14,.65,"sine");tone(660,.21,.22,.8,"triangle");}\n  else if(name==="matchPause"){tone(440,.00,.13,.6,"triangle");tone(330,.11,.20,.6,"sine");}\n  else if(name==="matchResume"){tone(330,.00,.12,.55,"sine");tone(494,.10,.20,.7,"triangle");}\n}\nfunction audioContextKey(){\n  return roomModeConnected()?`room:${window.BigWalkRooms?.getRoomCode?.()||"connected"}`:"local";\n}\nfunction localRelocationReadyNow(){\n  if(!isRoomHider()||!relocationState.active||!localRelocationPlan||localRelocationPlan.invalid||localRelocationPlan.skip||localRelocationPlan.signaled||!liveMarker)return false;\n  const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);\n  return d>=localRelocationPlan.target&&pointInRelocationRegion(liveMarker,localRelocationPlan);\n}\nfunction captureAudioEventState(){\n  const sec=currentMatchSeconds();\n  const unlockCount=Object.values(unlockTimes).filter(t=>sec>=Number(t)).length;\n  return {\n    key:audioContextKey(),running:roomModeConnected()?roomMatchRunning():matchRunning,sec,unlockCount,\n    cooldownActive:!testingUnlockOverride&&(Number(questionCooldownUntil||0)-sec)>.01,\n    relocationActive:roomModeConnected()&&!!relocationState.active,\n    relocationIndex:Number(relocationState.index||0),\n    relocationReady:localRelocationReadyNow()\n  };\n}\nfunction updateGameAudioEvents(){\n  const now=captureAudioEventState();\n  if(!audioEventSnapshot||audioEventSnapshot.key!==now.key){audioEventSnapshot=now;return;}\n  const prev=audioEventSnapshot;\n  if(!prev.running&&now.running)playGameSound(now.sec<2?"matchStart":"matchResume");\n  else if(prev.running&&!now.running&&now.sec>.1)playGameSound("matchPause");\n  if(now.running&&now.unlockCount>prev.unlockCount)playGameSound("questionUnlock");\n  if(prev.cooldownActive&&!now.cooldownActive&&!now.relocationActive)playGameSound("cooldownReady");\n  if(!prev.relocationActive&&now.relocationActive)playGameSound("relocationStart");\n  if(prev.relocationActive&&!now.relocationActive)playGameSound("relocationComplete");\n  if(!prev.relocationReady&&now.relocationReady)playGameSound("relocationReady");\n  audioEventSnapshot=now;\n}\n\nconst panModeBtn=document.getElementById("panModeBtn");\n''','sound engine and state')
+
+              s=once(s,
+              '''function tickMatchTimer(){\n  if(roomModeConnected()){\n    maybeHostAdvanceRelocation().then(()=>{relocationSchedulerError="";}).catch(err=>{\n      relocationSchedulerError=String(err?.message||err);\n      console.warn("Relocation state update failed",err);\n    });\n    renderMatchTimer();return;\n  }\n  if(!matchRunning)return;\n  const now=performance.now();\n  if(matchLastTick!==null)matchElapsedMs+=now-matchLastTick;\n  matchLastTick=now;\n  renderMatchTimer();\n}\n''',
+              '''function tickMatchTimer(){\n  if(roomModeConnected()){\n    maybeHostAdvanceRelocation().then(()=>{relocationSchedulerError="";}).catch(err=>{\n      relocationSchedulerError=String(err?.message||err);\n      console.warn("Relocation state update failed",err);\n    });\n    renderMatchTimer();updateGameAudioEvents();return;\n  }\n  if(!matchRunning){updateGameAudioEvents();return;}\n  const now=performance.now();\n  if(matchLastTick!==null)matchElapsedMs+=now-matchLastTick;\n  matchLastTick=now;\n  renderMatchTimer();updateGameAudioEvents();\n}\n''','audio event polling')
+
+              s=once(s,
+              '''document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};\ndocument.getElementById("relocationReadyBtn").onclick=()=>{\n''',
+              '''document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};\nconst soundEnabledEl=document.getElementById("soundEnabled"),soundVolumeEl=document.getElementById("soundVolume"),soundVolumeValueEl=document.getElementById("soundVolumeValue");\nsoundEnabledEl.checked=soundSettings.enabled;\nsoundVolumeEl.value=String(Math.round(soundSettings.volume*100));\nsoundVolumeValueEl.textContent=`${Math.round(soundSettings.volume*100)}%`;\nsoundEnabledEl.onchange=e=>{soundSettings.enabled=!!e.target.checked;saveSoundSettings();if(soundSettings.enabled)ensureGameAudioContext();};\nsoundVolumeEl.oninput=e=>{soundSettings.volume=Math.max(0,Math.min(1,Number(e.target.value)/100));soundVolumeValueEl.textContent=`${Math.round(soundSettings.volume*100)}%`;saveSoundSettings();};\ndocument.getElementById("testSoundBtn").onclick=()=>playGameSound("questionUnlock");\ndocument.addEventListener("pointerdown",()=>ensureGameAudioContext(),{once:true,capture:true});\ndocument.addEventListener("keydown",()=>ensureGameAudioContext(),{once:true,capture:true});\ndocument.getElementById("relocationReadyBtn").onclick=()=>{\n''','sound settings bindings')
+
+              p.write_text(s)
+
+          patch('index.html')
+          PY
+      - name: Validate source branch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text()
+          scripts=re.findall(r'<script>([\s\S]*?)</script>',s)
+          if not scripts: raise SystemExit('No inline script found')
+          Path('/tmp/index-inline.js').write_text('\n'.join(scripts))
+          PY
+          node --check /tmp/index-inline.js
+          git diff --check
+          grep -q 'id="soundEnabled"' index.html
+          grep -q 'playGameSound("relocationStart")' index.html
+      - name: Commit source sound system
+        run: |
+          rm .github/workflows/web-audio-pass.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html .github/workflows/web-audio-pass.yml
+          git commit -m 'Add Web Audio gameplay feedback'
+          git push origin HEAD:v1.2.0-rooms
+      - name: Patch isolated Rooms preview
+        run: |
+          git checkout -B main origin/main
+          git show v1.2.0-rooms:index.html > /tmp/source-index.html
+          python - <<'PY'
+          from pathlib import Path
+          src=Path('/tmp/source-index.html').read_text()
+          src=src.replace('src="big-walk-map.png"','src="../big-walk-map.png"',1)
+          Path('rooms-preview/index.html').write_text(src)
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('rooms-preview/index.html').read_text()
+          scripts=re.findall(r'<script>([\s\S]*?)</script>',s)
+          if not scripts: raise SystemExit('No preview inline script found')
+          Path('/tmp/preview-inline.js').write_text('\n'.join(scripts))
+          PY
+          node --check /tmp/preview-inline.js
+          grep -q 'src="../big-walk-map.png"' rooms-preview/index.html
+          grep -q 'id="soundEnabled"' rooms-preview/index.html
+          git diff --check
+          git add rooms-preview/index.html
+          git commit -m 'Add Web Audio sounds to Rooms preview'
+          git push origin HEAD:main
