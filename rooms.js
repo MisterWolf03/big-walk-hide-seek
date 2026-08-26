@@ -197,6 +197,12 @@ async function roomExists(code){
   const snap = await dbMod.get(dbMod.ref(db, `rooms/${code}/meta`));
   return snap.exists();
 }
+async function roomHasOtherHider(code){
+  const {dbMod} = firebase;
+  const snap = await dbMod.get(dbMod.ref(db, `rooms/${code}/members`));
+  const members = snap.val() || {};
+  return Object.entries(members).some(([uid, member]) => uid !== user?.uid && member?.role === "hider");
+}
 
 async function createRoom(){
   if(busy || !(await ensureFirebase())) return;
@@ -249,7 +255,11 @@ async function joinRoom(){
   setBusy(true);
   try{
     if(!(await roomExists(code))) throw new Error("Room not found. Check the code and try again.");
-    await connectToRoom(code, safeName(ui.nameInput.value), ui.roleInput.value === "hider" ? "hider" : "seeker", false);
+    const role = ui.roleInput.value === "hider" ? "hider" : "seeker";
+    if(role === "hider" && await roomHasOtherHider(code)){
+      throw new Error("This room already has a hider. Join as a seeker instead.");
+    }
+    await connectToRoom(code, safeName(ui.nameInput.value), role, false);
   }catch(err){
     console.error(err);
     setStatus(err?.message || "Could not join room.", "error");
@@ -427,8 +437,15 @@ async function restoreSession(){
   const code = param.length === ROOM_CODE_LENGTH ? param : normalizeCode(saved?.roomCode);
   if(code.length !== ROOM_CODE_LENGTH || !saved?.displayName || !saved?.role) return;
   try{
-    if(await roomExists(code)) await connectToRoom(code, safeName(saved.displayName), saved.role === "hider" ? "hider" : "seeker", false);
-    else clearSession();
+    if(await roomExists(code)){
+      const role = saved.role === "hider" ? "hider" : "seeker";
+      if(role === "hider" && await roomHasOtherHider(code)){
+        clearSession();
+        setStatus("This room already has a hider. Rejoin as a seeker.", "warning");
+      }else{
+        await connectToRoom(code, safeName(saved.displayName), role, false);
+      }
+    }else clearSession();
   }catch(err){ console.warn("Room reconnect failed", err); }
 }
 
