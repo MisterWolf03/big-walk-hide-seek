@@ -134,6 +134,26 @@ function updateRoomUi(){
 }
 
 function memberName(uid){ return roomData?.members?.[uid]?.name || null; }
+function hiderMemberEntry(){
+  return Object.entries(roomData?.members || {}).find(([,m]) => m?.role === "hider") || null;
+}
+function hasHider(){ return !!hiderMemberEntry(); }
+function getHiderRelocationSignal(){
+  const entry=hiderMemberEntry();
+  if(!entry)return null;
+  const [uid,m]=entry;
+  return {uid,index:Number(m?.relocationCompleteIndex||0),result:String(m?.relocationResult||"")};
+}
+async function signalRelocationComplete(index,result="completed"){
+  if(!isConnected() || roomRole!=="hider")return false;
+  const {dbMod}=firebase;
+  await dbMod.update(dbMod.ref(db, `rooms/${roomCode}/members/${user.uid}`), {
+    relocationCompleteIndex:Number(index||0),
+    relocationResult:String(result||"completed").slice(0,16),
+    lastSeen:dbMod.serverTimestamp(),
+  });
+  return true;
+}
 
 function getMatchSeconds(){
   const match = roomData?.state?.match;
@@ -491,6 +511,9 @@ window.BigWalkRooms = {
   leaveRoom,
   getRoomCode:()=>roomCode,
   getRole:()=>roomRole,
+  hasHider,
+  getHiderRelocationSignal,
+  signalRelocationComplete,
 };
 
 bindUi();

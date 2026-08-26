@@ -135,6 +135,8 @@
   .questionCost{font-size:11px;font-weight:800;color:#ffe391;margin:-4px 0 9px}
   .questionCost.cantAfford{color:#ffadad}
   .pointsBig{text-align:center;font-size:34px;font-weight:900;color:#ffe58b;margin:2px 0 8px}
+  .relocationBig{text-align:center;font-size:28px;font-weight:900;color:#cdb4ff;margin:2px 0 8px}
+  .relocationActive{border-color:#704f8e;background:#2a1d34}
   .lockNotice{
     display:none;margin:0 0 9px;padding:8px;border-radius:8px;background:#171b21;
     border:1px solid #3a4350;color:#ffd98b;font-size:12px
@@ -357,6 +359,15 @@
         <div class="metric"><b>Total spent</b><span id="seekerPointsSpent">0</span></div>
         <div id="questionPointsStatus" class="miniStatus"></div>
         <p class="small">Points accrue only from match time. More precise questions cost more, so seekers can spend now or save for stronger information later.</p>
+      </section>
+
+      <section id="relocationGameSection">
+        <h3>Forced relocation</h3>
+        <div class="relocationBig" id="relocationHeadline">25:00</div>
+        <div class="metric"><b>Status</b><span id="relocationStatus">Waiting</span></div>
+        <div class="metric"><b>Minimum move</b><span id="relocationTarget">250 units</span></div>
+        <div class="metric"><b>Progress</b><span id="relocationProgress">—</span></div>
+        <div id="relocationMessage" class="small" style="margin-top:8px">The first relocation begins at 25:00.</div>
       </section>
 
       <section>
@@ -583,7 +594,8 @@
           <li>No hiding behind the giant wall.</li>
           <li>No hiding inside the tunnel system.</li>
           <li>No hiding on the chairlift or train.</li>
-          <li>No moving after setting your hiding spot.</li>
+          <li>Stay in your hiding spot except during an active forced relocation or future mission.</li>
+          <li>During forced relocation, remain inside the current legal search area and move the required displacement from your relocation start point.</li>
           <li>All hiding spots must be accessible by foot.</li>
         </ul>
       </section>
@@ -644,6 +656,30 @@
         <button class="primary" id="applyScheduleBtn" style="margin-top:8px">Apply timing settings</button>
         <div id="scheduleValidation" class="validation"></div>
         <div id="scheduleSummary" class="summaryLine"></div>
+      </section>
+
+      <section>
+        <h3>Forced relocation</h3>
+        <div class="scheduleGrid">
+          <label>First relocation (min)
+            <input id="relocationFirstMinutes" type="number" min="1" step="1" value="25">
+          </label>
+          <label>Repeat interval (min)
+            <input id="relocationIntervalMinutes" type="number" min="1" step="1" value="20">
+          </label>
+          <label>Target window (min)
+            <input id="relocationWindowMinutes" type="number" min="0.5" step="0.5" value="3">
+          </label>
+          <label>Minimum displacement
+            <input id="relocationMinDistance" type="number" min="25" step="25" value="250">
+          </label>
+          <label>Skip below max distance
+            <input id="relocationSkipBelow" type="number" min="25" step="25" value="75">
+          </label>
+        </div>
+        <button class="primary" id="applyRelocationSettingsBtn" style="margin-top:8px">Apply relocation settings</button>
+        <div id="relocationSettingsValidation" class="validation"></div>
+        <p class="small">The hider must end at least the target displacement from where relocation began. If the connected legal search area is too small, the hider's browser scales the target to 80% of the available displacement; extremely cramped areas skip relocation.</p>
       </section>
 
       <section>
@@ -874,6 +910,9 @@ let questionCooldownSeconds=300;
 let questionCooldownUntil=0;
 let seekerPointsSpent=0;
 const pointsPerMinute=1;
+let relocationSettings={firstAt:1500,interval:1200,window:180,minDistance:250,skipBelow:75};
+let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
+let localRelocationPlan=null,relocationMutationBusy=false;
 let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
 let testingUnlockOverride=false;
 
@@ -1037,6 +1076,124 @@ function updateQuestionEconomy(){
   }
 }
 
+function roomRole(){return window.BigWalkRooms?.getRole?.()||null;}
+function isRoomHider(){return roomModeConnected()&&roomRole()==="hider";}
+function resetLocalRelocationPlan(){localRelocationPlan=null;}
+function relocationCellKey(x,y){return `${x},${y}`;}
+function buildRelocationPlan(start){
+  const step=25;
+  if(!start||!allowedAt(start.x,start.y)||!coordinateLooksOnMap(start))return {index:relocationState.index,start,invalid:true,step};
+  const sx=Math.round(start.x/step)*step,sy=Math.round(start.y/step)*step;
+  let seed=null;
+  for(let radius=0;radius<=2&&!seed;radius++){
+    for(let dx=-radius;dx<=radius&&!seed;dx++)for(let dy=-radius;dy<=radius&&!seed;dy++){
+      const x=sx+dx*step,y=sy+dy*step,p={x,y};
+      if(coordinateLooksOnMap(p)&&allowedAt(x,y))seed=p;
+    }
+  }
+  if(!seed)return {index:relocationState.index,start,invalid:true,step};
+  const q=[seed],seen=new Set([relocationCellKey(seed.x,seed.y)]);let qi=0,maxDistance=0;
+  const dirs=[[step,0],[-step,0],[0,step],[0,-step]];
+  while(qi<q.length){
+    const cur=q[qi++];
+    maxDistance=Math.max(maxDistance,Math.hypot(cur.x-start.x,cur.y-start.y));
+    for(const [dx,dy] of dirs){
+      const x=cur.x+dx,y=cur.y+dy,key=relocationCellKey(x,y);if(seen.has(key))continue;
+      const p={x,y};if(!coordinateLooksOnMap(p)||!allowedAt(x,y))continue;
+      seen.add(key);q.push(p);
+    }
+  }
+  if(maxDistance<relocationSettings.skipBelow)return {index:relocationState.index,start,step,seen,maxDistance,target:0,skip:true,signaled:false};
+  let target=relocationSettings.minDistance;
+  if(maxDistance<target)target=Math.max(25,Math.floor((maxDistance*.8)/25)*25);
+  return {index:relocationState.index,start,step,seen,maxDistance,target,skip:false,signaled:false};
+}
+function pointInRelocationRegion(p,plan){
+  if(!p||!plan?.seen||!allowedAt(p.x,p.y))return false;
+  const x=Math.round(p.x/plan.step)*plan.step,y=Math.round(p.y/plan.step)*plan.step;
+  return plan.seen.has(relocationCellKey(x,y));
+}
+function signalRelocationResult(result){
+  if(!localRelocationPlan||localRelocationPlan.signaled)return;
+  localRelocationPlan.signaled=true;
+  Promise.resolve(window.BigWalkRooms?.signalRelocationComplete?.(relocationState.index,result)).catch(err=>{
+    console.warn("Relocation completion signal failed",err);localRelocationPlan.signaled=false;
+  });
+}
+function updateLocalRelocation(){
+  if(!roomModeConnected()||!relocationState.active||!isRoomHider()){
+    if(!relocationState.active)resetLocalRelocationPlan();
+    return;
+  }
+  if(!liveMarker)return;
+  if(!localRelocationPlan||localRelocationPlan.index!==relocationState.index){
+    localRelocationPlan=buildRelocationPlan({x:liveMarker.x,y:liveMarker.y});
+    if(localRelocationPlan.skip)signalRelocationResult("skipped");
+  }
+  const plan=localRelocationPlan;if(!plan||plan.invalid||plan.skip)return;
+  const current={x:liveMarker.x,y:liveMarker.y};
+  const displacement=Math.hypot(current.x-plan.start.x,current.y-plan.start.y);
+  if(displacement>=plan.target&&pointInRelocationRegion(current,plan))signalRelocationResult("completed");
+}
+async function maybeHostAdvanceRelocation(){
+  if(!roomModeConnected()||!window.BigWalkRooms?.isHost?.()||relocationMutationBusy||!matchRunning)return;
+  const now=currentMatchSeconds();
+  if(relocationState.active){
+    const signal=window.BigWalkRooms?.getHiderRelocationSignal?.();
+    if(signal&&Number(signal.index)>=Number(relocationState.index)){
+      relocationMutationBusy=true;
+      try{
+        relocationState={...relocationState,active:false,lastResult:signal.result||"completed",nextAt:now+relocationSettings.interval,startedAt:null,deadline:null};
+        resetLocalRelocationPlan();
+        await window.BigWalkRooms.pushGameState();
+      }finally{relocationMutationBusy=false;}
+    }
+    return;
+  }
+  if(!window.BigWalkRooms?.hasHider?.())return;
+  if(now+0.01<Number(relocationState.nextAt||relocationSettings.firstAt))return;
+  relocationMutationBusy=true;
+  try{
+    relocationState={active:true,index:Number(relocationState.index||0)+1,nextAt:Number(relocationState.nextAt||relocationSettings.firstAt),startedAt:now,deadline:now+relocationSettings.window,lastResult:""};
+    resetLocalRelocationPlan();
+    await window.BigWalkRooms.pushGameState();
+  }finally{relocationMutationBusy=false;}
+}
+function updateRelocationUi(){
+  const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),status=document.getElementById("relocationStatus"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage");
+  if(!section)return;
+  section.classList.toggle("relocationActive",!!relocationState.active);
+  const now=currentMatchSeconds();
+  if(!roomModeConnected()){
+    headline.textContent=formatTime(Math.max(0,relocationState.nextAt-now));status.textContent="Rooms required";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";message.textContent="Forced relocation activates during shared room matches.";return;
+  }
+  if(relocationState.active){
+    const remaining=Math.max(0,Number(relocationState.deadline||now)-now);
+    headline.textContent=remaining>0?formatTime(remaining):"OVERTIME";
+    status.textContent="Relocation in progress";
+    if(isRoomHider()){
+      if(!liveMarker){target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="Waiting for live tracker";message.textContent="Connect live location. Your coordinates stay local; only completion is sent to the room.";}
+      else if(!localRelocationPlan){target.textContent="Calculating…";progress.textContent="—";message.textContent="Mapping the connected legal search area around your relocation start.";}
+      else if(localRelocationPlan.invalid){target.textContent="—";progress.textContent="Start outside legal area";message.textContent="Move back inside the current valid search area so relocation can begin.";}
+      else if(localRelocationPlan.skip){target.textContent="Skipped";progress.textContent=`Max ≈ ${Math.round(localRelocationPlan.maxDistance)} units`;message.textContent="The remaining connected legal area is too cramped for a meaningful relocation. Sending a skip result.";}
+      else{
+        const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y),legal=pointInRelocationRegion(liveMarker,localRelocationPlan);
+        target.textContent=`${Math.round(localRelocationPlan.target)} units${localRelocationPlan.target<relocationSettings.minDistance?" · scaled":""}`;
+        progress.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)}${legal?"":" · outside connected legal area"}`;
+        message.textContent=localRelocationPlan.signaled?"Relocation complete — waiting for the room to confirm.":"Displacement is measured from where this relocation started, not total distance traveled.";
+      }
+    }else{
+      target.textContent=`${relocationSettings.minDistance} units minimum`;
+      progress.textContent="Hidden from seekers";
+      message.textContent=remaining>0?"Questions are locked while the hider relocates.":"Relocation is overdue; questions remain locked until the hider completes the move.";
+    }
+  }else{
+    const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);
+    headline.textContent=formatTime(next);status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:"Waiting";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";
+    message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;
+  }
+}
+
 function showTab(name){
   activeTab=name;
   panelVisible=true;
@@ -1082,7 +1239,7 @@ function syncMatchControlButtons(){
 }
 window.BigWalkRoomBridge={
   getSharedGameState(){
-    return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},questionCooldownSeconds:Number(questionCooldownSeconds||300),seekerPointsSpent:Number(seekerPointsSpent||0)};
+    return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},questionCooldownSeconds:Number(questionCooldownSeconds||300),seekerPointsSpent:Number(seekerPointsSpent||0),relocationSettings:{...relocationSettings},relocationState:{...relocationState}};
   },
   applySharedRoomState(state){
     roomApplyingRemoteState=true;
@@ -1096,9 +1253,15 @@ window.BigWalkRoomBridge={
       }
       if(Number.isFinite(Number(game.questionCooldownSeconds))&&Number(game.questionCooldownSeconds)>0)questionCooldownSeconds=Number(game.questionCooldownSeconds);
       seekerPointsSpent=Math.max(0,Number(game.seekerPointsSpent||0));
+      if(game.relocationSettings&&typeof game.relocationSettings==="object")relocationSettings={...relocationSettings,...game.relocationSettings};
+      if(game.relocationState&&typeof game.relocationState==="object"){
+        const incoming={...relocationState,...game.relocationState};
+        if(Number(incoming.index)!==Number(relocationState.index)||!incoming.active)resetLocalRelocationPlan();
+        relocationState=incoming;
+      }
       const match=state?.match;
       if(match){matchRunning=!!match.running;matchElapsedMs=Math.max(0,Number(match.elapsedMs||0));matchLastTick=null;}
-      updateScheduleInputs();renderMatchTimer();syncMatchControlButtons();
+      updateScheduleInputs();updateRelocationSettingsInputs();renderMatchTimer();syncMatchControlButtons();
       if(appInitialized)draw();
     }finally{roomApplyingRemoteState=false;}
   },
@@ -1106,7 +1269,8 @@ window.BigWalkRoomBridge={
     roomApplyingRemoteState=true;
     try{
       matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;seekerPointsSpent=0;
-      constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null;rulerB=null;
+      relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();
+      constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null,rulerB=null;
       ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
       updateMarkerPanel();updateRulerPanel();renderMatchTimer();syncMatchControlButtons();
       if(appInitialized)draw();
@@ -1147,7 +1311,11 @@ function updateCooldownDisplay(){
   const remain=questionCooldownRemaining();
 
   clock.classList.remove("ready","waiting");
-  if(testingUnlockOverride){
+  if(roomModeConnected()&&relocationState.active){
+    clock.textContent="RELOCATION";clock.classList.add("waiting");
+    const relocationRemain=Math.max(0,Number(relocationState.deadline||currentMatchSeconds())-currentMatchSeconds());
+    status.textContent=relocationRemain>0?`Questions are locked while the hider relocates · ${formatTime(relocationRemain)} target window remaining.`:"Relocation is overdue; questions remain locked until it is completed.";
+  }else if(testingUnlockOverride){
     clock.textContent="BYPASSED";
     clock.classList.add("ready");
     status.textContent="Testing override is active, so the global cooldown is ignored.";
@@ -1168,8 +1336,9 @@ function setSectionLocked(sectionId,unlockAt,noticeId){
   const section=document.getElementById(sectionId);
   const unlocked=questionUnlocked(unlockAt);
   const cooldown=questionCooldownActive();
+  const relocationLock=roomModeConnected()&&!!relocationState.active;
   const roomReadOnly=roomModeConnected()&&!roomCanEditSharedGame();
-  const locked=!unlocked || cooldown || roomReadOnly;
+  const locked=!unlocked || cooldown || relocationLock || roomReadOnly;
 
   section.classList.toggle("locked",locked);
   section.querySelectorAll("input,select,button").forEach(el=>el.disabled=locked);
@@ -1182,6 +1351,9 @@ function setSectionLocked(sectionId,unlockAt,noticeId){
       const remain=Math.max(0,unlockAt-currentMatchSeconds());
       notice.textContent=`Locked until ${formatTime(unlockAt)} · ${formatTime(remain)} remaining.`;
     }
+  }else if(relocationLock){
+    const remain=Math.max(0,Number(relocationState.deadline||currentMatchSeconds())-currentMatchSeconds());
+    notice.textContent=remain>0?`Hider relocation in progress · ${formatTime(remain)} target window remaining.`:"Hider relocation is overdue · locked until relocation completes.";
   }else if(cooldown){
     notice.textContent=`Global question cooldown · ${formatTime(questionCooldownRemaining())} remaining.`;
   }else if(roomReadOnly){
@@ -1230,6 +1402,10 @@ function updateRuleTimes(){
   document.getElementById("ruleMarkerTime").textContent=formatTime(unlockTimes.marker);
   document.getElementById("ruleCooldownTime").textContent=formatTime(questionCooldownSeconds);
 }
+function updateRelocationSettingsInputs(){
+  const ids={relocationFirstMinutes:relocationSettings.firstAt/60,relocationIntervalMinutes:relocationSettings.interval/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
+  for(const [id,value] of Object.entries(ids)){const el=document.getElementById(id);if(el)el.value=value;}
+}
 function updateScheduleInputs(){
   document.getElementById("gridUnlockMinutes").value=unlockTimes.grid/60;
   document.getElementById("nearestUnlockMinutes").value=unlockTimes.nearest/60;
@@ -1244,6 +1420,7 @@ function renderMatchTimer(){
   const time=formatTime(currentMatchSeconds());
   document.getElementById("matchTimer").textContent=time;
   document.getElementById("topTimerClock").textContent=time;
+  updateLocalRelocation();updateRelocationUi();
   updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();
 
   const status=document.getElementById("timerStatus");
@@ -1270,7 +1447,11 @@ function renderMatchTimer(){
     [unlockTimes.marker,"Marker questions"]
   ].find(([t])=>sec<t);
 
-  if(questionCooldownActive()){
+  if(roomModeConnected()&&relocationState.active){
+  const rem=Math.max(0,Number(relocationState.deadline||sec)-sec);
+  status.textContent=rem>0?`Forced relocation active · target window ${formatTime(rem)} remaining.`:"Forced relocation overdue · waiting for hider completion.";
+  topSub.textContent=rem>0?`Hider relocating · ${formatTime(rem)}`:"Hider relocation overtime";
+}else if(questionCooldownActive()){
     const cd=formatTime(questionCooldownRemaining());
     status.textContent=upcoming
       ? `Question cooldown: ${cd}. Next unlock: ${upcoming[1]} in ${formatTime(upcoming[0]-sec)}.`
@@ -1286,7 +1467,10 @@ function renderMatchTimer(){
   }
 }
 function tickMatchTimer(){
-  if(roomModeConnected()){renderMatchTimer();return;}
+  if(roomModeConnected()){
+    maybeHostAdvanceRelocation().catch(err=>console.warn("Relocation state update failed",err));
+    renderMatchTimer();return;
+  }
   if(!matchRunning)return;
   const now=performance.now();
   if(matchLastTick!==null)matchElapsedMs+=now-matchLastTick;
@@ -1300,6 +1484,7 @@ function startTimerLoop(){
 function resetMatchState(){
   matchRunning=false;matchElapsedMs=0;matchLastTick=null;
   questionCooldownUntil=0;seekerPointsSpent=0;
+  relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();
   constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker ? "live" : null;nextMarkerId=1;rulerA=null;rulerB=null;
   document.getElementById("startMatchBtn").textContent="Start match";
   document.getElementById("startMatchBtn").disabled=false;
@@ -1919,6 +2104,17 @@ document.getElementById("applyScheduleBtn").onclick=()=>{
   setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
+document.getElementById("applyRelocationSettingsBtn").onclick=()=>{
+  const v=document.getElementById("relocationSettingsValidation");v.textContent="";
+  if(roomModeConnected()&&!window.BigWalkRooms?.isHost?.()){v.textContent="Only the room host can change relocation settings.";return;}
+  const first=+document.getElementById("relocationFirstMinutes").value,interval=+document.getElementById("relocationIntervalMinutes").value,windowMin=+document.getElementById("relocationWindowMinutes").value,minDistance=+document.getElementById("relocationMinDistance").value,skipBelow=+document.getElementById("relocationSkipBelow").value;
+  if(![first,interval,windowMin,minDistance,skipBelow].every(Number.isFinite)||first<=0||interval<=0||windowMin<=0||minDistance<25||skipBelow<25){v.textContent="Use positive times and distances of at least 25 units.";return;}
+  if(skipBelow>minDistance){v.textContent="Skip-below distance cannot be larger than the normal relocation target.";return;}
+  relocationSettings={firstAt:first*60,interval:interval*60,window:windowMin*60,minDistance,skipBelow};
+  if(!relocationState.active){relocationState.nextAt=relocationState.index===0?relocationSettings.firstAt:currentMatchSeconds()+relocationSettings.interval;}
+  resetLocalRelocationPlan();renderMatchTimer();notifyRoomGameStateChanged();
+  v.style.color="#9ef1c2";v.textContent="Relocation settings applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
+};
 
 document.getElementById("fitBtn").onclick=fitMap;
 document.getElementById("gridBtn").onclick=()=>{
