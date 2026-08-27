@@ -24,35 +24,12 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Patch v1.3 overtime reveal
-        run: |
-          echo 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKZGVmIG9uY2UodGV4dCwgb2xkLCBuZXcsIGxhYmVsKToKICAgIGNvdW50ID0gdGV4dC5jb3VudChvbGQpCiAgICBpZiBjb3VudCAhPSAxOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJ7bGFiZWx9OiBleHBlY3RlZCAxIG1hdGNoLCBmb3VuZCB7Y291bnR9IikKICAgIHJldHVybiB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpCgpwID0gUGF0aCgicm9vbXMuanMiKQpyID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKCm92ZXJ0aW1lX2Z1bmNzID0gJycnZnVuY3Rpb24gZ2V0SGlkZXJPdmVydGltZVNpZ25hbCgpewogIGNvbnN0IGVudHJ5PWhpZGVyTWVtYmVyRW50cnkoKTsKICBpZighZW50cnkpcmV0dXJuIG51bGw7CiAgY29uc3QgW3VpZCxtXT1lbnRyeTsKICBjb25zdCB4PU51bWJlcihtPy5yZWxvY2F0aW9uT3ZlcnRpbWVYKSx5PU51bWJlcihtPy5yZWxvY2F0aW9uT3ZlcnRpbWVZKSxyZXZlYWxlZEF0PU51bWJlcihtPy5yZWxvY2F0aW9uT3ZlcnRpbWVBdHx8MCk7CiAgcmV0dXJuIHt1aWQsaW5kZXg6TnVtYmVyKG0/LnJlbG9jYXRpb25PdmVydGltZUluZGV4fHwwKSx4LHkscmV2ZWFsZWRBdH07Cn0KYXN5bmMgZnVuY3Rpb24gc2lnbmFsUmVsb2NhdGlvbk92ZXJ0aW1lKGluZGV4LHgseSl7CiAgaWYoIWlzQ29ubmVjdGVkKCkgfHwgaXNvbGVTdHJpbmcocm9vbVJvbGUpIT09ImhpZGVyIiB8fCAhTnVtYmVyLmlzRmluaXRlKE51bWJlcih4KSkgfHwgIU51bWJlci5pc0Zpbml0ZShOdW1iZXIoeSkpKXJldHVybiBmYWxzZTsKICBjb25zdCB7ZGJNb2R9PWZpcmViYXNlOwogIGF3YWl0IGRiTW9kLnVwZGF0ZShkYk1vZC5yZWYoZGIsIGByb29tcy8ke3Jvb21Db2RlfS9tZW1iZXJzLyR7dXNlci51aWR9YCksIHsKICAgIHJlbG9jYXRpb25PdmVydGltZUluZGV4Ok51bWJlcihpbmRleHx8MCksCiAgICByZWxvY2F0aW9uT3ZlcnRpbWVYOk51bWJlcih4KSwKICAgIHJlbG9jYXRpb25PdmVydGltZVk6TnVtYmVyKHkpLAogICAgcmVsb2NhdGlvbk92ZXJ0aW1lQXQ6ZGJNb2Quc2VydmVyVGltZXN0YW1wKCksCiAgICBsYXN0U2VlbjpkYk1vZC5zZXJ2ZXJUaW1lc3RhbXAoKSwKICB9KTsKICByZXR1cm4gdHJ1ZTsKfQoKJycnCnIgPSBvbmNlKHIsICJmdW5jdGlvbiBnZXRNYXRjaFNlY29uZHMoKXsiLCBvdmVydGltZV9mdW5jcyArICJmdW5jdGlvbiBnZXRNYXRjaFNlY29uZHMoKXsiLCAib3ZlcnRpbWUgbWVtYmVyIGZ1bmN0aW9ucyIpCnIgPSBvbmNlKAogICAgciwKICAgICIgICAgYXdhaXQgZGJNb2Quc2V0KG1lbWJlclJlZiwge25hbWUscm9sZSxqb2luZWRBdDpkYk1vZC5zZXJ2ZXJUaW1lc3RhbXAoKSxsYXN0U2VlbjpkYk1vZC5zZXJ2ZXJUaW1lc3RhbXAoKX0pOyIsCiAgICAiICAgIGF3YWl0IGRiTW9kLnVwZGF0ZShtZW1iZXJSZWYsIHtuYW1lLHJvbGUsam9pbmVkQXQ6ZGJNb2Quc2VydmVyVGltZXN0YW1wKCksbGFzdFNlZW46ZGJNb2Quc2VydmVyVGltZXN0YW1wKCl9KTsiLAogICAgInByZXNlcnZlIG1lbWJlciBnYW1lcGxheSBmaWVsZHMgb24gcmVjb25uZWN0IiwKKQpyID0gb25jZSgKICAgIHIsCiAgICAiICBnZXRoaWRlclJlbG9jYXRpb25TaWduYWwsXG4gIHNpZ25hbFJlbG9jYXRpb25Db21wbGV0ZSxcbl07IiwKICAgICIgIGdldEhpZGVyUmVsb2NhdGlvblNpZ25hbCxcbiAgc2lnbmFsUmVsb2NhdGlvbkNvbXBsZXRlLFxuICBnZXRoaWRlck92ZXJ0aW1lU2lnbmFsLFxuICBzaWduYWxSZWxvY2F0aW9uT3ZlcnRpbWUsXG4gIGdldFNlcnZlck5vdzooKT0+c2VydmVyTm93KCksXG59OyIsCiAgICAicm9vbSBleHBvcnRzIiwKKQpwLndyaXRlX3RleHQocixlbmNvZGluZz0idXRmLTgiKQoKcCA9IFBhdGgoImluZGV4Lmh0bWwiKQpzID0gcC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKcyA9IG9uY2UocywgIjx0aXRsZT5CaWcgV2FsayBIaWRlICsgU2VlayDigJQgUHJvdG90eXBlIDEuMi4wPC90aXRsZT4iLCAiPHRpdGxlPkJpZyBXYWxrIEhpZGUgKyBTZWVrIOKAlCBQcm90b3R5cGUgMS4zLjAgUHJldmlldzwvdGl0bGU+IiwgInRpdGxlIikKcyA9IG9uY2UocywgJ2NvbnN0IEFQUF9WRVJTSU9OPS IxLjIuMCI7JywgJ2NvbnN0IEFQUF9WRVJTSU9OPS IxLjMuMC1wcmV2aWV3IjsnLCAiYXBwIHZlcnNpb24iKQppZiAnPHNwYW4gY2xhc3M9InNtYWxsIj52MS4yLjA8L3NwYW4+JyBpbiBzOgogICAgcyA9IHMucmVwbGFjZSgnPHNwYW4gY2xhc3M9InNtYWxsIj52MS4yLjA8L3NwYW4+JywgJzxzcGFuIGNsYXNzPSJzbWFsbCI+djEuMy4wIHByZXZpZXc8L3NwYW4+JywgMSkKCnN0YXRlX2FuY2hvciA9ICcnJ2xldCBsb2NhbFJlbG9jYXRpb25QbGFuPW51bGwscmVsb2NhdGlvbk11dGF0aW9uQnVzeT1mYWxzZTsKbGV0IHJlbG9jYXRpb25TY2hlZHVsZXJFcnJvcj0iIjsnJycKc3RhdGVfbmV3ID0gJycn bGV0IGxvY2FsUmVsb2NhdGlvblBsYW49bnVsbCxyZWxvY2F0aW9uTXV0YXRpb25CdXN5PWZhbHNlOwpsZXQgcmVsb2NhdGlvblNjaGVkdWxlckVycm9yPSIiOwpjb25zdCBPVkVSVElNRV9SRVZFQUxfUkFESVVTPTIwMDsKY29uc3QgT1ZFUlRJTUVfUkVWRUFMX01TPTEyMDAwMDsKY29uc3QgSElERVJfTUlTU0lPTl9UQVJHRVRfRklMTD0icmdiYSgxNDcsODYsMjU1LC4zOCkiOwpjb25zdCBISURFUl9NSVNTSU9OX1RBUkdFVF9FREdFPSJyZ2JhKDIwMSwxNzcsMjU1LC45NSkiOwpsZXQgbG9jYWxSZWxvY2F0aW9uT3ZlcnRpbWVTaWduYWxJbmRleD0wOwpsZXQgbG9jYWxIaWRlck1pc3Npb25UYXJnZXRDZWxscz1udWxsOwpsZXQgb3ZlcnRpbWVSZXZlYWxXYXNWaXNpYmxlPWZhbHNlOyc nJw==
-' | base64 -d > /tmp/patch.py
-          python3 /tmp/patch.py
+        run: python3 .github/scripts/v13_patch.py
 
       - name: Validate v1.3 branch
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          s=Path('index.html').read_text(encoding='utf-8')
-          start=s.index('<script>')+len('<script>')
-          end=s.index('</script>',start)
-          Path('/tmp/app.js').write_text(s[start:end],encoding='utf-8')
-          checks=[
-            'const OVERTIME_REVEAL_RADIUS=200;',
-            'const OVERTIME_REVEAL_MS=120000;',
-            'rgba(225,43,43,.50)',
-            'HIDER_MISSION_TARGET_FILL="rgba(147,86,255,.38)"',
-            'signalRelocationOvertime',
-            'relocationOvertime',
-            'src="big-walk-map.png"',
-          ]
-          for check in checks:
-              assert check in s,check
-          r=Path('rooms.js').read_text(encoding='utf-8')
-          assert 'getHiderOvertimeSignal' in r
-          assert 'signalRelocationOvertime' in r
-          assert 'getServerNow:()=>serverNow()' in r
-          PY
+          python3 -c "from pathlib import Path; s=Path('index.html').read_text(); a=s.index('<script>')+len('<script>'); b=s.index('</script>',a); Path('/tmp/app.js').write_text(s[a:b]); assert 'const OVERTIME_REVEAL_RADIUS=200;' in s; assert 'const OVERTIME_REVEAL_MS=120000;' in s; assert 'rgba(225,43,43,.50)' in s; assert 'HIDER_MISSION_TARGET_FILL=\"rgba(147,86,255,.38)\"' in s; assert 'signalRelocationOvertime' in s; assert 'src=\"big-walk-map.png\"' in s"
+          python3 -c "from pathlib import Path; r=Path('rooms.js').read_text(); assert 'getHiderOvertimeSignal' in r; assert 'signalRelocationOvertime' in r; assert 'getServerNow:()=>serverNow()' in r"
           node --check /tmp/app.js
           node --check rooms.js
           git diff --check
@@ -60,7 +37,8 @@ jobs:
       - name: Commit v1.3 branch
         run: |
           rm .github/workflows/v1.3-hider-overtime-pass.yml
-          git add index.html rooms.js version.json .github/workflows/v1.3-hider-overtime-pass.yml
+          rm .github/scripts/v13_patch.py
+          git add -A
           git commit -m "Add v1.3 relocation overtime reveal"
           git push origin v1.3.0-hider
           echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
@@ -74,25 +52,9 @@ jobs:
           git show "$SOURCE_SHA:rooms.js" > v1.3-preview/rooms.js
           git show "$SOURCE_SHA:firebase-config.js" > v1.3-preview/firebase-config.js
           git show "$SOURCE_SHA:version.json" > v1.3-preview/version.json
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('v1.3-preview/index.html')
-          s=p.read_text(encoding='utf-8')
-          if s.count('src="big-walk-map.png"')!=1:
-              raise SystemExit('unexpected preview map source count')
-          s=s.replace('src="big-walk-map.png"','src="../big-walk-map.png"',1)
-          p.write_text(s,encoding='utf-8')
-          Path('v1.3-preview/README.txt').write_text('Big Walk Hide + Seek v1.3 development preview. Stable v1.2 remains at the site root.\n',encoding='utf-8')
-          PY
-          python3 - <<'PY'
-          from pathlib import Path
-          s=Path('v1.3-preview/index.html').read_text(encoding='utf-8')
-          start=s.index('<script>')+len('<script>')
-          end=s.index('</script>',start)
-          Path('/tmp/preview.js').write_text(s[start:end],encoding='utf-8')
-          assert 'src="../big-walk-map.png"' in s
-          assert '1.3.0-preview' in s
-          PY
+          python3 -c "from pathlib import Path; p=Path('v1.3-preview/index.html'); s=p.read_text(); assert s.count('src=\"big-walk-map.png\"')==1; p.write_text(s.replace('src=\"big-walk-map.png\"','src=\"../big-walk-map.png\"',1))"
+          printf '%s\n' 'Big Walk Hide + Seek v1.3 development preview. Stable v1.2 remains at the site root.' > v1.3-preview/README.txt
+          python3 -c "from pathlib import Path; s=Path('v1.3-preview/index.html').read_text(); a=s.index('<script>')+len('<script>'); b=s.index('</script>',a); Path('/tmp/preview.js').write_text(s[a:b]); assert 'src=\"../big-walk-map.png\"' in s; assert '1.3.0-preview' in s"
           node --check /tmp/preview.js
           node --check v1.3-preview/rooms.js
           git diff --check
