@@ -1,5 +1,6 @@
 name: Fix v1.3 overtime snapshot
 
+# rerun after reset-guard correction
 on:
   push:
     branches: [v1.3.0-hider]
