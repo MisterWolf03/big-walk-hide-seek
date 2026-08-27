@@ -1,4 +1,5 @@
 const FIREBASE_SDK_VERSION = "12.17.1";
+const ROOMS_BUILD_ID = "v13-overtime-20260827b";
 const SESSION_KEY = "bigwalk.room.session.v1";
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LENGTH = 6;
@@ -541,6 +542,7 @@ window.BigWalkRooms = {
   getHiderOvertimeSignal,
   signalRelocationOvertime,
   getServerNow:()=>serverNow(),
+  getBuildId:()=>ROOMS_BUILD_ID,
 };
 
 bindUi();

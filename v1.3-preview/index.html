@@ -883,6 +883,7 @@
 
 <script>
 const APP_VERSION="1.3.0-preview";
+const REQUIRED_ROOMS_BUILD_ID="v13-overtime-20260827b";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -1242,6 +1243,7 @@ function makeRelocationOvertimeToken(){
 }
 function maybeSignalRelocationOvertime(){
   if(!isRoomHider()||!roomMatchRunning()||!relocationState.active||!liveMarker)return;
+  if(window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)return;
   const index=Number(relocationState.index||0),deadline=Number(relocationState.deadline),token=currentRelocationOvertimeToken();
   if(!index||!token||!Number.isFinite(deadline)||currentMatchSeconds()+.01<deadline)return;
   const existing=window.BigWalkRooms?.getHiderOvertimeSignal?.();
@@ -1357,6 +1359,7 @@ function updateRelocationUi(){
       target.textContent=`${relocationSettings.minDistance} units minimum`;
       progress.textContent="Hidden from seekers";
       if(remaining>0)message.textContent="Questions are locked while the hider relocates.";
+      else if(window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)message.textContent="Room sync module is out of date — hard refresh this browser.";
       else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider's last-known 200-unit area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";
     }
   }else{
@@ -2435,6 +2438,6 @@ if(img.complete && img.naturalWidth>0)initializeMapApp();
 window.addEventListener("resize",()=>{if(appInitialized)fitMap();});
 </script>
 <script src="firebase-config.js"></script>
-<script type="module" src="rooms.js"></script>
+<script type="module" src="rooms.js?v=v13-overtime-20260827b"></script>
 </body>
 </html>
