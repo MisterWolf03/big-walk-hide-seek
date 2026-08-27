@@ -161,15 +161,17 @@ function getHiderOvertimeSignal(){
   if(!entry)return null;
   const [uid,m]=entry;
   const x=Number(m?.relocationOvertimeX),y=Number(m?.relocationOvertimeY),revealedAt=Number(m?.relocationOvertimeAt||0);
-  return {uid,index:Number(m?.relocationOvertimeIndex||0),x,y,revealedAt};
+  const token=String(m?.relocationOvertimeToken||"");
+  return {uid,index:Number(m?.relocationOvertimeIndex||0),x,y,revealedAt,token};
 }
-async function signalRelocationOvertime(index,x,y){
+async function signalRelocationOvertime(index,x,y,token=""){
   if(!isConnected() || roomRole!=="hider" || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y)))return false;
   const {dbMod}=firebase;
   await dbMod.update(dbMod.ref(db, `rooms/${roomCode}/members/${user.uid}`), {
     relocationOvertimeIndex:Number(index||0),
     relocationOvertimeX:Number(x),
     relocationOvertimeY:Number(y),
+    relocationOvertimeToken:String(token||"").slice(0,96),
     relocationOvertimeAt:dbMod.serverTimestamp(),
     lastSeen:dbMod.serverTimestamp(),
   });
