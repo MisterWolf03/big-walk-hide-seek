@@ -939,6 +939,8 @@ const OVERTIME_REVEAL_MS=120000;
 const HIDER_MISSION_TARGET_FILL="rgba(147,86,255,.38)";
 const HIDER_MISSION_TARGET_EDGE="rgba(201,177,255,.95)";
 let localRelocationOvertimeSignalIndex=0;
+let localRelocationOvertimeSnapshot=null;
+let localRelocationOvertimeLastAttempt=0;
 let localHiderMissionTargetCells=null;
 let overtimeRevealWasVisible=false;
 let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
@@ -1230,28 +1232,48 @@ function signalRelocationResult(result){
     console.warn("Relocation completion signal failed",err);localRelocationPlan.signaled=false;
   });
 }
+function currentRelocationOvertimeToken(){
+  return String(relocationState?.overtimeToken||"");
+}
+function makeRelocationOvertimeToken(){
+  if(globalThis.crypto?.randomUUID)return crypto.randomUUID();
+  const a=new Uint32Array(4);crypto.getRandomValues(a);
+  return `ot-${Date.now()}-${Array.from(a,n=>n.toString(36)).join("")}`;
+}
 function maybeSignalRelocationOvertime(){
   if(!isRoomHider()||!roomMatchRunning()||!relocationState.active||!liveMarker)return;
-  const index=Number(relocationState.index||0),deadline=Number(relocationState.deadline);
-  if(!index||!Number.isFinite(deadline)||currentMatchSeconds()+.01<deadline)return;
+  const index=Number(relocationState.index||0),deadline=Number(relocationState.deadline),token=currentRelocationOvertimeToken();
+  if(!index||!token||!Number.isFinite(deadline)||currentMatchSeconds()+.01<deadline)return;
   const existing=window.BigWalkRooms?.getHiderOvertimeSignal?.();
-  if(existing&&Number(existing.index)>=index){localRelocationOvertimeSignalIndex=index;return;}
-  if(localRelocationOvertimeSignalIndex>=index)return;
-  localRelocationOvertimeSignalIndex=index;
-  Promise.resolve(window.BigWalkRooms?.signalRelocationOvertime?.(index,liveMarker.x,liveMarker.y)).catch(err=>{
+  if(existing&&Number(existing.index)===index&&String(existing.token||"")===token&&Number.isFinite(Number(existing.revealedAt))&&Number(existing.revealedAt)>0){
+    localRelocationOvertimeSignalIndex=index;
+    localRelocationOvertimeSnapshot=null;
+    return;
+  }
+  if(!localRelocationOvertimeSnapshot||localRelocationOvertimeSnapshot.token!==token){
+    localRelocationOvertimeSnapshot={index,token,x:Number(liveMarker.x),y:Number(liveMarker.y)};
+    localRelocationOvertimeLastAttempt=0;
+  }
+  const now=Date.now();
+  if(now-localRelocationOvertimeLastAttempt<1000)return;
+  localRelocationOvertimeLastAttempt=now;
+  const snap=localRelocationOvertimeSnapshot;
+  Promise.resolve(window.BigWalkRooms?.signalRelocationOvertime?.(snap.index,snap.x,snap.y,snap.token)).catch(err=>{
     console.warn("Relocation overtime reveal signal failed",err);
-    if(localRelocationOvertimeSignalIndex===index)localRelocationOvertimeSignalIndex=index-1;
+    localRelocationOvertimeLastAttempt=0;
   });
 }
 function activeOvertimeReveal(){
   if(!roomModeConnected()||roomRole()!=="seeker")return null;
+  const token=currentRelocationOvertimeToken();
+  if(!token)return null;
   const signal=window.BigWalkRooms?.getHiderOvertimeSignal?.();
-  if(!signal)return null;
+  if(!signal||Number(signal.index)!==Number(relocationState.index||0)||String(signal.token||"")!==token)return null;
   const x=Number(signal.x),y=Number(signal.y),revealedAt=Number(signal.revealedAt||0);
   if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(revealedAt)||revealedAt<=0)return null;
   const now=Number(window.BigWalkRooms?.getServerNow?.()||Date.now()),age=now-revealedAt;
   if(age<0||age>=OVERTIME_REVEAL_MS)return null;
-  return {x,y,radius:OVERTIME_REVEAL_RADIUS,remainingMs:OVERTIME_REVEAL_MS-age,index:Number(signal.index||0)};
+  return {x,y,radius:OVERTIME_REVEAL_RADIUS,remainingMs:OVERTIME_REVEAL_MS-age,index:Number(signal.index||0),token};
 }
 function refreshTransientMapOverlays(){
   const visible=!!activeOvertimeReveal();
@@ -1276,6 +1298,14 @@ async function maybeHostAdvanceRelocation(){
   if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning())return;
   const now=currentMatchSeconds();
   if(relocationState.active){
+    if(!currentRelocationOvertimeToken()){
+      relocationMutationBusy=true;
+      try{
+        relocationState={...relocationState,overtimeToken:makeRelocationOvertimeToken()};
+        await window.BigWalkRooms.pushGameState();
+      }finally{relocationMutationBusy=false;}
+      return;
+    }
     const signal=window.BigWalkRooms?.getHiderRelocationSignal?.();
     if(signal&&Number(signal.index)>=Number(relocationState.index)){
       relocationMutationBusy=true;
@@ -1291,7 +1321,7 @@ async function maybeHostAdvanceRelocation(){
   if(now+0.01<Number(relocationState.nextAt||relocationSettings.firstAt))return;
   relocationMutationBusy=true;
   try{
-    relocationState={active:true,index:Number(relocationState.index||0)+1,nextAt:Number(relocationState.nextAt||relocationSettings.firstAt),startedAt:now,deadline:now+relocationSettings.window,lastResult:""};
+    relocationState={active:true,index:Number(relocationState.index||0)+1,nextAt:Number(relocationState.nextAt||relocationSettings.firstAt),startedAt:now,deadline:now+relocationSettings.window,lastResult:"",overtimeToken:makeRelocationOvertimeToken()};
     resetLocalRelocationPlan();
     await window.BigWalkRooms.pushGameState();
   }finally{relocationMutationBusy=false;}
@@ -1326,7 +1356,8 @@ function updateRelocationUi(){
     }else{
       target.textContent=`${relocationSettings.minDistance} units minimum`;
       progress.textContent="Hidden from seekers";
-      message.textContent=remaining>0?"Questions are locked while the hider relocates.":"Relocation overtime — the hider's last-known 200-unit area is revealed in red for 2 minutes.";
+      if(remaining>0)message.textContent="Questions are locked while the hider relocates.";
+      else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider's last-known 200-unit area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";
     }
   }else{
     const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);
@@ -1425,7 +1456,7 @@ window.BigWalkRoomBridge={
     roomApplyingRemoteState=true;
     try{
       matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;seekerPointsSpent=0;
-      relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();
+      relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
       constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null,rulerB=null;
       ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
       updateMarkerPanel();updateRulerPanel();renderMatchTimer();syncMatchControlButtons();
@@ -1643,7 +1674,7 @@ function startTimerLoop(){
 function resetMatchState(){
   matchRunning=false;matchElapsedMs=0;matchLastTick=null;
   questionCooldownUntil=0;seekerPointsSpent=0;
-  relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();
+  relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
   constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker ? "live" : null;nextMarkerId=1;rulerA=null;rulerB=null;
   document.getElementById("startMatchBtn").textContent="Start match";
   document.getElementById("startMatchBtn").disabled=false;
