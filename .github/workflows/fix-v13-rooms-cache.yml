@@ -1,0 +1,113 @@
+name: Fix v1.3 Rooms cache mismatch
+
+on:
+  push:
+    branches: [v1.3.0-hider]
+    paths:
+      - '.github/workflows/fix-v13-rooms-cache.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1.3.0-hider
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Patch source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('rooms.js')
+          r=p.read_text(encoding='utf-8')
+          old='const FIREBASE_SDK_VERSION = "12.17.1";'
+          new='const FIREBASE_SDK_VERSION = "12.17.1";\nconst ROOMS_BUILD_ID = "v13-overtime-20260827b";'
+          if r.count(old)!=1: raise SystemExit('rooms build id anchor mismatch')
+          r=r.replace(old,new,1)
+          old='  getServerNow:()=>serverNow(),\n};'
+          new='  getServerNow:()=>serverNow(),\n  getBuildId:()=>ROOMS_BUILD_ID,\n};'
+          if r.count(old)!=1: raise SystemExit('rooms export anchor mismatch')
+          r=r.replace(old,new,1)
+          p.write_text(r,encoding='utf-8')
+
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old='const APP_VERSION="1.3.0-preview";'
+          new='const APP_VERSION="1.3.0-preview";\nconst REQUIRED_ROOMS_BUILD_ID="v13-overtime-20260827b";'
+          if s.count(old)!=1: raise SystemExit('app version anchor mismatch')
+          s=s.replace(old,new,1)
+          old='<script type="module" src="rooms.js"></script>'
+          new='<script type="module" src="rooms.js?v=v13-overtime-20260827b"></script>'
+          if s.count(old)!=1: raise SystemExit('rooms script anchor mismatch')
+          s=s.replace(old,new,1)
+
+          old='function maybeSignalRelocationOvertime(){\n  if(!isRoomHider()||!roomMatchRunning()||!relocationState.active||!liveMarker)return;'
+          new='function maybeSignalRelocationOvertime(){\n  if(!isRoomHider()||!roomMatchRunning()||!relocationState.active||!liveMarker)return;\n  if(window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)return;'
+          if s.count(old)!=1: raise SystemExit('overtime build guard anchor mismatch')
+          s=s.replace(old,new,1)
+
+          old='      if(remaining>0)message.textContent="Questions are locked while the hider relocates.";\n      else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider\'s last-known 200-unit area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";'
+          new='      if(remaining>0)message.textContent="Questions are locked while the hider relocates.";\n      else if(window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)message.textContent="Room sync module is out of date — hard refresh this browser.";\n      else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider\'s last-known 200-unit area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";'
+          if s.count(old)!=1: raise SystemExit('seeker diagnostic anchor mismatch')
+          s=s.replace(old,new,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Validate source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path('index.html').read_text(encoding='utf-8')
+          assert 'rooms.js?v=v13-overtime-20260827b' in s
+          assert 'REQUIRED_ROOMS_BUILD_ID="v13-overtime-20260827b"' in s
+          assert 'Room sync module is out of date' in s
+          start=s.index('<script>')+len('<script>')
+          end=s.index('</script>',start)
+          Path('/tmp/app.js').write_text(s[start:end],encoding='utf-8')
+          r=Path('rooms.js').read_text(encoding='utf-8')
+          assert 'ROOMS_BUILD_ID = "v13-overtime-20260827b"' in r
+          assert 'getBuildId:()=>ROOMS_BUILD_ID' in r
+          PY
+          node --check /tmp/app.js
+          node --check rooms.js
+          git diff --check
+
+      - name: Commit source
+        run: |
+          rm .github/workflows/fix-v13-rooms-cache.yml
+          git add index.html rooms.js .github/workflows/fix-v13-rooms-cache.yml
+          git commit -m "Prevent v1.3 Rooms module cache mismatch"
+          git push origin v1.3.0-hider
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish preview
+        run: |
+          git checkout main
+          git pull --ff-only origin main
+          git show "$SOURCE_SHA:index.html" > v1.3-preview/index.html
+          git show "$SOURCE_SHA:rooms.js" > v1.3-preview/rooms.js
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('v1.3-preview/index.html')
+          s=p.read_text(encoding='utf-8')
+          if s.count('src="big-walk-map.png"')!=1: raise SystemExit('preview map path mismatch')
+          s=s.replace('src="big-walk-map.png"','src="../big-walk-map.png"',1)
+          p.write_text(s,encoding='utf-8')
+          assert 'rooms.js?v=v13-overtime-20260827b' in s
+          PY
+          node --check v1.3-preview/rooms.js
+          git diff --check
+          git add v1.3-preview/index.html v1.3-preview/rooms.js
+          git commit -m "Bust v1.3 Rooms preview module cache"
+          git push origin main
