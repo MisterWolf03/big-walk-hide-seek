@@ -1,5 +1,5 @@
 const FIREBASE_SDK_VERSION = "12.17.1";
-const ROOMS_BUILD_ID = "v13-overtime-20260827b";
+const ROOMS_BUILD_ID = "v13-missions-20260827a";
 const SESSION_KEY = "bigwalk.room.session.v1";
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LENGTH = 6;
@@ -174,6 +174,25 @@ async function signalRelocationOvertime(index,x,y,token=""){
     relocationOvertimeY:Number(y),
     relocationOvertimeToken:String(token||"").slice(0,96),
     relocationOvertimeAt:dbMod.serverTimestamp(),
+    lastSeen:dbMod.serverTimestamp(),
+  });
+  return true;
+}
+
+function getHiderMissionSignal(){
+  const entry=hiderMemberEntry();
+  if(!entry)return null;
+  const [uid,m]=entry;
+  return {uid,index:Number(m?.missionResultIndex||0),result:String(m?.missionResult||""),token:String(m?.missionResultToken||"")};
+}
+async function signalMissionResult(index,result="completed",token=""){
+  if(!isConnected() || roomRole!=="hider")return false;
+  const cleanResult=result==="completed"?"completed":"cancelled";
+  const {dbMod}=firebase;
+  await dbMod.update(dbMod.ref(db, `rooms/${roomCode}/members/${user.uid}`), {
+    missionResultIndex:Number(index||0),
+    missionResult:cleanResult,
+    missionResultToken:String(token||"").slice(0,128),
     lastSeen:dbMod.serverTimestamp(),
   });
   return true;
@@ -541,6 +560,8 @@ window.BigWalkRooms = {
   signalRelocationComplete,
   getHiderOvertimeSignal,
   signalRelocationOvertime,
+  getHiderMissionSignal,
+  signalMissionResult,
   getServerNow:()=>serverNow(),
   getBuildId:()=>ROOMS_BUILD_ID,
 };
