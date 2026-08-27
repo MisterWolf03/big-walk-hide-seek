@@ -935,7 +935,7 @@ let relocationSettings={firstAt:1500,interval:1200,window:300,minDistance:250,sk
 let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
 let localRelocationPlan=null,relocationMutationBusy=false;
 let relocationSchedulerError="";
-const OVERTIME_REVEAL_RADIUS=100;
+const OVERTIME_REVEAL_RADIUS=150;
 const OVERTIME_REVEAL_MS=120000;
 const HIDER_MISSION_TARGET_FILL="rgba(147,86,255,.38)";
 const HIDER_MISSION_TARGET_EDGE="rgba(201,177,255,.95)";
@@ -1360,7 +1360,7 @@ function updateRelocationUi(){
       progress.textContent="Hidden from seekers";
       if(remaining>0)message.textContent="Questions are locked while the hider relocates.";
       else if(window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)message.textContent="Room sync module is out of date — hard refresh this browser.";
-      else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider's last-known 200-unit-diameter area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";
+      else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider's last-known 300-unit-diameter area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";
     }
   }else{
     const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);
