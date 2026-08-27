@@ -34,11 +34,11 @@ jobs:
           if s.count(old)!=1:
               raise SystemExit(f'expected one radius declaration, found {s.count(old)}')
           s=s.replace(old,new,1)
-          old_text='200-unit diameter'
+          old_text='200-unit-diameter'
           count=s.count(old_text)
           if count < 1:
-              raise SystemExit('expected at least one 200-unit diameter label')
-          s=s.replace(old_text,'300-unit diameter')
+              raise SystemExit('expected at least one 200-unit-diameter label')
+          s=s.replace(old_text,'300-unit-diameter')
           p.write_text(s,encoding='utf-8')
           PY
 
@@ -48,8 +48,8 @@ jobs:
           from pathlib import Path
           s=Path('index.html').read_text(encoding='utf-8')
           assert 'const OVERTIME_REVEAL_RADIUS=150;' in s
-          assert '300-unit diameter' in s
-          assert '200-unit diameter' not in s
+          assert '300-unit-diameter' in s
+          assert '200-unit-diameter' not in s
           start=s.index('<script>')+len('<script>')
           end=s.index('</script>',start)
           Path('/tmp/app.js').write_text(s[start:end],encoding='utf-8')
@@ -86,7 +86,7 @@ jobs:
           end=s.index('</script>',start)
           Path('/tmp/preview.js').write_text(s[start:end],encoding='utf-8')
           assert 'const OVERTIME_REVEAL_RADIUS=150;' in s
-          assert '300-unit diameter' in s
+          assert '300-unit-diameter' in s
           PY
           node --check /tmp/preview.js
           node --check v1.3-preview/rooms.js
