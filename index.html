@@ -382,6 +382,7 @@
         <div class="metric"><b>Progress</b><span id="missionProgress">—</span></div>
         <div class="metric"><b>Power Charges</b><span class="powerCharge" id="hiderPowerCharges">0</span></div>
         <div id="missionMessage" class="small" style="margin-top:8px">First mission becomes available at 10:00.</div>
+        <button class="primary" id="missionStartBtn" style="display:none;margin-top:8px">Start mission</button>
       </section>
 
       <section>
@@ -744,6 +745,7 @@
           <li>Cross the Zone privately highlights a purple far-side target inside the connected legal search area.</li>
           <li>Starting the mission cancels the pending forced-relocation countdown; completing or cancelling it starts a fresh relocation interval.</li>
           <li>Mission completion awards one Power Charge for the upcoming Hider power system.</li>
+          <li>Missions are optional: the Hider chooses when to start an available mission, and Seekers do not see mission countdowns or availability.</li>
           <li>Mission targets remain local to the Hider browser and are never uploaded to the room.</li>
         </ul>
       </div>
@@ -906,7 +908,7 @@
 
 <script>
 const APP_VERSION="1.3.0-preview";
-const REQUIRED_ROOMS_BUILD_ID="v13-missions-20260827a";
+const REQUIRED_ROOMS_BUILD_ID="v13-missions-optional-20260827b";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -963,6 +965,7 @@ let missionState={active:false,index:0,nextAt:600,type:"crossZone",startedAt:nul
 let hiderPowerCharges=0;
 let localHiderMissionPlan=null,missionMutationBusy=false;
 let missionSchedulerError="";
+let missionStartRequestPending=false;
 const OVERTIME_REVEAL_RADIUS=150;
 const OVERTIME_REVEAL_MS=120000;
 const HIDER_MISSION_TARGET_FILL="rgba(147,86,255,.38)";
@@ -1419,7 +1422,7 @@ async function maybeHostAdvanceMission(){
     if(!window.BigWalkRooms?.hasHider?.()){
       missionMutationBusy=true;
       try{
-        missionState={...missionState,active:false,nextAt:now+nextMissionDelay(),startedAt:null,lastResult:"cancelled",token:""};
+        missionState={...missionState,active:false,available:false,nextAt:now+nextMissionDelay(),startedAt:null,lastResult:"cancelled",token:""};
         relocationState={...relocationState,active:false,nextAt:now+relocationSettings.interval,startedAt:null,deadline:null};
         resetLocalHiderMissionPlan();
         await window.BigWalkRooms.pushGameState();
@@ -1432,7 +1435,7 @@ async function maybeHostAdvanceMission(){
       try{
         const result=String(signal.result);
         if(result==="completed")hiderPowerCharges=Math.max(0,Number(hiderPowerCharges||0))+1;
-        missionState={...missionState,active:false,nextAt:now+nextMissionDelay(),startedAt:null,lastResult:result,token:""};
+        missionState={...missionState,active:false,available:false,nextAt:now+nextMissionDelay(),startedAt:null,lastResult:result,token:""};
         relocationState={...relocationState,active:false,nextAt:now+relocationSettings.interval,startedAt:null,deadline:null};
         resetLocalHiderMissionPlan();
         await window.BigWalkRooms.pushGameState();
@@ -1440,27 +1443,47 @@ async function maybeHostAdvanceMission(){
     }
     return;
   }
+  if(missionState.available){
+    if(!window.BigWalkRooms?.hasHider?.()||relocationState.active)return;
+    const startSignal=window.BigWalkRooms?.getHiderMissionStartSignal?.();
+    if(!startSignal||Number(startSignal.index)!==Number(missionState.index)||String(startSignal.token||"")!==String(missionState.token||""))return;
+    missionMutationBusy=true;
+    try{
+      missionState={...missionState,active:true,available:false,nextAt:null,startedAt:now,lastResult:""};
+      relocationState={...relocationState,nextAt:null};
+      resetLocalHiderMissionPlan();
+      await window.BigWalkRooms.pushGameState();
+    }finally{missionMutationBusy=false;}
+    return;
+  }
   if(relocationState.active||!window.BigWalkRooms?.hasHider?.())return;
   const nextAt=Number(missionState.nextAt??missionSettings.firstAt);
   if(!Number.isFinite(nextAt)||now+.01<nextAt)return;
   missionMutationBusy=true;
   try{
-    missionState={active:true,index:Number(missionState.index||0)+1,nextAt:null,type:"crossZone",startedAt:now,lastResult:"",token:makeMissionToken()};
-    relocationState={...relocationState,nextAt:null};
+    missionState={active:false,available:true,index:Number(missionState.index||0)+1,nextAt:null,type:"crossZone",startedAt:null,lastResult:"",token:makeMissionToken()};
     resetLocalHiderMissionPlan();
     await window.BigWalkRooms.pushGameState();
   }finally{missionMutationBusy=false;}
 }
 function updateMissionUi(){
-  const section=document.getElementById("missionGameSection"),headline=document.getElementById("missionHeadline"),status=document.getElementById("missionStatus"),type=document.getElementById("missionType"),progress=document.getElementById("missionProgress"),charges=document.getElementById("hiderPowerCharges"),message=document.getElementById("missionMessage");
+  const section=document.getElementById("missionGameSection"),headline=document.getElementById("missionHeadline"),status=document.getElementById("missionStatus"),type=document.getElementById("missionType"),progress=document.getElementById("missionProgress"),charges=document.getElementById("hiderPowerCharges"),message=document.getElementById("missionMessage"),startBtn=document.getElementById("missionStartBtn");
   if(!section)return;
+  if(!missionState.available)missionStartRequestPending=false;
+  startBtn.style.display="none";startBtn.disabled=true;startBtn.textContent="Start mission";
   section.classList.toggle("missionActive",!!missionState.active);
   type.textContent="Cross the Zone";
   charges.textContent=isRoomHider()||!roomModeConnected()?String(Math.max(0,Number(hiderPowerCharges||0))):"Hidden";
   const now=currentMatchSeconds();
   if(!roomModeConnected()){
+    section.style.display="block";
     headline.textContent=formatTime(Math.max(0,Number(missionState.nextAt??missionSettings.firstAt)-now));status.textContent="Rooms required";progress.textContent="—";message.textContent="Hider missions activate during shared room matches.";return;
   }
+  if(!isRoomHider()&&!missionState.active){
+    section.style.display="none";
+    return;
+  }
+  section.style.display="block";
   if(missionState.active){
     headline.textContent="ACTIVE";
     if(isRoomHider()){
@@ -1480,13 +1503,28 @@ function updateMissionUi(){
     }
     return;
   }
+  if(isRoomHider()&&missionState.available){
+    headline.textContent="AVAILABLE";status.textContent="Optional";progress.textContent="Not started";
+    startBtn.style.display="block";
+    const buildOk=window.BigWalkRooms?.getBuildId?.()===REQUIRED_ROOMS_BUILD_ID;
+    const canStart=buildOk&&roomMatchRunning()&&!relocationState.active&&!!liveMarker&&!missionStartRequestPending;
+    startBtn.disabled=!canStart;
+    startBtn.textContent=missionStartRequestPending?"Starting…":"Start mission";
+    if(!buildOk)message.textContent="Room sync module is out of date — hard refresh this browser.";
+    else if(!roomMatchRunning())message.textContent="Mission is available. Resume the match before starting it.";
+    else if(relocationState.active)message.textContent="Mission is available, but it cannot start during forced relocation. You can accept it after relocation finishes.";
+    else if(!liveMarker)message.textContent="Mission is available. Connect live location before starting so your private target can be generated.";
+    else if(missionStartRequestPending)message.textContent="Starting Cross the Zone…";
+    else message.textContent="Optional mission. Start it whenever you want; until then, the forced-relocation countdown continues normally.";
+    return;
+  }
   const nextAt=Number(missionState.nextAt??missionSettings.firstAt),remaining=Math.max(0,nextAt-now);
   headline.textContent=formatTime(remaining);progress.textContent="—";
   status.textContent=missionState.lastResult?`Last: ${missionState.lastResult}`:"Waiting";
   if(missionSchedulerError)message.textContent=`Mission scheduler error: ${missionSchedulerError}`;
-  else if(relocationState.active&&remaining<=.01)message.textContent="Mission is ready and will begin after the current forced relocation is completed.";
-  else if(!window.BigWalkRooms?.hasHider?.())message.textContent="Waiting for a Hider before the next mission can begin.";
-  else message.textContent=`Next mission in ${formatTime(remaining)}. After a mission ends, the next one is scheduled randomly 10–15 minutes later.`;
+  else if(relocationState.active&&remaining<=.01)message.textContent="The next mission offer will wait until the current forced relocation is completed.";
+  else if(!window.BigWalkRooms?.hasHider?.())message.textContent="Waiting for a Hider before the next mission can become available.";
+  else message.textContent=`Next optional mission becomes available in ${formatTime(remaining)}. After a mission ends, the next offer is scheduled randomly 10–15 minutes later.`;
 }
 
 function updateLocalRelocation(){
@@ -2553,6 +2591,20 @@ soundVolumeEl.oninput=e=>{soundSettings.volume=Math.max(0,Math.min(1,Number(e.ta
 document.getElementById("testSoundBtn").onclick=()=>playGameSound("questionUnlock");
 document.addEventListener("pointerdown",()=>ensureGameAudioContext(),{once:true,capture:true});
 document.addEventListener("keydown",()=>ensureGameAudioContext(),{once:true,capture:true});
+document.getElementById("missionStartBtn").onclick=async()=>{
+  if(!isRoomHider()||!missionState.available||missionState.active||relocationState.active||!roomMatchRunning()||!liveMarker||missionStartRequestPending)return;
+  const fn=window.BigWalkRooms?.signalMissionStart;
+  if(typeof fn!=="function"||window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)return;
+  missionStartRequestPending=true;renderMatchTimer();
+  try{
+    await fn(missionState.index,missionState.token);
+    setTimeout(()=>{
+      if(missionState.available&&!missionState.active){missionStartRequestPending=false;renderMatchTimer();}
+    },2000);
+  }catch(err){
+    console.warn("Mission start request failed",err);missionStartRequestPending=false;renderMatchTimer();
+  }
+};
 document.getElementById("relocationReadyBtn").onclick=()=>{
   if(!isRoomHider()||!relocationState.active||!localRelocationPlan||localRelocationPlan.invalid||localRelocationPlan.skip||localRelocationPlan.signaled)return;
   if(!liveMarker)return;
@@ -2661,6 +2713,6 @@ if(img.complete && img.naturalWidth>0)initializeMapApp();
 window.addEventListener("resize",()=>{if(appInitialized)fitMap();});
 </script>
 <script src="firebase-config.js"></script>
-<script type="module" src="rooms.js?v=v13-missions-20260827a"></script>
+<script type="module" src="rooms.js?v=v13-missions-optional-20260827b"></script>
 </body>
 </html>
