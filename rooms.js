@@ -156,6 +156,26 @@ async function signalRelocationComplete(index,result="completed"){
   return true;
 }
 
+function getHiderOvertimeSignal(){
+  const entry=hiderMemberEntry();
+  if(!entry)return null;
+  const [uid,m]=entry;
+  const x=Number(m?.relocationOvertimeX),y=Number(m?.relocationOvertimeY),revealedAt=Number(m?.relocationOvertimeAt||0);
+  return {uid,index:Number(m?.relocationOvertimeIndex||0),x,y,revealedAt};
+}
+async function signalRelocationOvertime(index,x,y){
+  if(!isConnected() || roomRole!=="hider" || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y)))return false;
+  const {dbMod}=firebase;
+  await dbMod.update(dbMod.ref(db, `rooms/${roomCode}/members/${user.uid}`), {
+    relocationOvertimeIndex:Number(index||0),
+    relocationOvertimeX:Number(x),
+    relocationOvertimeY:Number(y),
+    relocationOvertimeAt:dbMod.serverTimestamp(),
+    lastSeen:dbMod.serverTimestamp(),
+  });
+  return true;
+}
+
 function getMatchSeconds(){
   const match = roomData?.state?.match;
   if(!match) return Number.NaN;
@@ -295,7 +315,7 @@ async function connectToRoom(code, name, role, created){
 
   const memberRef = dbMod.ref(db, `rooms/${code}/members/${user.uid}`);
   if(!created){
-    await dbMod.set(memberRef, {name,role,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
+    await dbMod.update(memberRef, {name,role,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
   }
   await dbMod.onDisconnect(memberRef).remove();
 
@@ -516,6 +536,9 @@ window.BigWalkRooms = {
   hasHider,
   getHiderRelocationSignal,
   signalRelocationComplete,
+  getHiderOvertimeSignal,
+  signalRelocationOvertime,
+  getServerNow:()=>serverNow(),
 };
 
 bindUi();

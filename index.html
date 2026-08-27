@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Big Walk Hide + Seek — Prototype 1.2.0</title>
+<title>Big Walk Hide + Seek — Prototype 1.3.0 Preview</title>
 <style>
   :root{
     --bg:#0e1116; --panel:#181d24; --panel2:#222934; --line:#303947;
@@ -286,7 +286,7 @@
   <div id="panel">
 
     <div id="view-room" class="panelView">
-      <div class="panelHeader"><h2>Room <span class="small">v1.2.0</span></h2><button class="closePanel">Hide</button></div>
+      <div class="panelHeader"><h2>Room <span class="small">v1.3.0 preview</span></h2><button class="closePanel">Hide</button></div>
       <div id="roomStatus" class="roomStatus">Initializing room service…</div>
       <div id="roomSetupNotice" class="roomSetupNotice">Rooms need a Firebase Realtime Database project before they can connect across devices. Follow <b>ROOMS_SETUP.md</b> in the repo, then add the Firebase web config to <b>firebase-config.js</b>.</div>
 
@@ -882,7 +882,7 @@
 </div>
 
 <script>
-const APP_VERSION="1.2.0";
+const APP_VERSION="1.3.0-preview";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -934,6 +934,13 @@ let relocationSettings={firstAt:1500,interval:1200,window:300,minDistance:250,sk
 let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
 let localRelocationPlan=null,relocationMutationBusy=false;
 let relocationSchedulerError="";
+const OVERTIME_REVEAL_RADIUS=200;
+const OVERTIME_REVEAL_MS=120000;
+const HIDER_MISSION_TARGET_FILL="rgba(147,86,255,.38)";
+const HIDER_MISSION_TARGET_EDGE="rgba(201,177,255,.95)";
+let localRelocationOvertimeSignalIndex=0;
+let localHiderMissionTargetCells=null;
+let overtimeRevealWasVisible=false;
 let matchElapsedMs=0,matchRunning=false,matchLastTick=null,timerLoop=null;
 let testingUnlockOverride=false;
 
@@ -975,6 +982,7 @@ function playGameSound(name){
   if(name==="questionUnlock"){tone(659,.00,.13,.65,"triangle");tone(880,.10,.22,.8,"sine");}
   else if(name==="cooldownReady"){tone(523,.00,.10,.65,"triangle");tone(784,.08,.18,.75,"sine");}
   else if(name==="relocationStart"){tone(220,.00,.16,.9,"square");tone(165,.19,.16,.85,"square");tone(220,.38,.22,.95,"square");}
+  else if(name==="relocationOvertime"){tone(880,.00,.13,1,"square");tone(660,.16,.13,1,"square");tone(880,.32,.13,1,"square");tone(440,.50,.34,1,"sawtooth");}
   else if(name==="relocationReady"){tone(440,.00,.10,.55,"triangle");tone(660,.09,.11,.65,"triangle");tone(880,.18,.20,.8,"sine");}
   else if(name==="relocationComplete"){tone(392,.00,.11,.55,"triangle");tone(523,.09,.13,.65,"triangle");tone(659,.19,.24,.8,"sine");}
   else if(name==="matchStart"){tone(330,.00,.12,.55,"sine");tone(440,.10,.14,.65,"sine");tone(660,.21,.22,.8,"triangle");}
@@ -996,6 +1004,7 @@ function captureAudioEventState(){
     key:audioContextKey(),running:roomModeConnected()?roomMatchRunning():matchRunning,sec,unlockCount,
     cooldownActive:!testingUnlockOverride&&(Number(questionCooldownUntil||0)-sec)>.01,
     relocationActive:roomModeConnected()&&!!relocationState.active,
+    relocationOvertime:roomModeConnected()&&!!relocationState.active&&Number.isFinite(Number(relocationState.deadline))&&sec>=Number(relocationState.deadline),
     relocationIndex:Number(relocationState.index||0),
     relocationReady:localRelocationReadyNow()
   };
@@ -1009,6 +1018,7 @@ function updateGameAudioEvents(){
   if(now.running&&now.unlockCount>prev.unlockCount)playGameSound("questionUnlock");
   if(prev.cooldownActive&&!now.cooldownActive&&!now.relocationActive)playGameSound("cooldownReady");
   if(!prev.relocationActive&&now.relocationActive)playGameSound("relocationStart");
+  if(!prev.relocationOvertime&&now.relocationOvertime)playGameSound("relocationOvertime");
   if(prev.relocationActive&&!now.relocationActive)playGameSound("relocationComplete");
   if(!prev.relocationReady&&now.relocationReady)playGameSound("relocationReady");
   audioEventSnapshot=now;
@@ -1220,12 +1230,42 @@ function signalRelocationResult(result){
     console.warn("Relocation completion signal failed",err);localRelocationPlan.signaled=false;
   });
 }
+function maybeSignalRelocationOvertime(){
+  if(!isRoomHider()||!roomMatchRunning()||!relocationState.active||!liveMarker)return;
+  const index=Number(relocationState.index||0),deadline=Number(relocationState.deadline);
+  if(!index||!Number.isFinite(deadline)||currentMatchSeconds()+.01<deadline)return;
+  const existing=window.BigWalkRooms?.getHiderOvertimeSignal?.();
+  if(existing&&Number(existing.index)>=index){localRelocationOvertimeSignalIndex=index;return;}
+  if(localRelocationOvertimeSignalIndex>=index)return;
+  localRelocationOvertimeSignalIndex=index;
+  Promise.resolve(window.BigWalkRooms?.signalRelocationOvertime?.(index,liveMarker.x,liveMarker.y)).catch(err=>{
+    console.warn("Relocation overtime reveal signal failed",err);
+    if(localRelocationOvertimeSignalIndex===index)localRelocationOvertimeSignalIndex=index-1;
+  });
+}
+function activeOvertimeReveal(){
+  if(!roomModeConnected()||roomRole()!=="seeker")return null;
+  const signal=window.BigWalkRooms?.getHiderOvertimeSignal?.();
+  if(!signal)return null;
+  const x=Number(signal.x),y=Number(signal.y),revealedAt=Number(signal.revealedAt||0);
+  if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(revealedAt)||revealedAt<=0)return null;
+  const now=Number(window.BigWalkRooms?.getServerNow?.()||Date.now()),age=now-revealedAt;
+  if(age<0||age>=OVERTIME_REVEAL_MS)return null;
+  return {x,y,radius:OVERTIME_REVEAL_RADIUS,remainingMs:OVERTIME_REVEAL_MS-age,index:Number(signal.index||0)};
+}
+function refreshTransientMapOverlays(){
+  const visible=!!activeOvertimeReveal();
+  if(visible||overtimeRevealWasVisible)draw();
+  overtimeRevealWasVisible=visible;
+}
+
 function updateLocalRelocation(){
   if(!roomModeConnected()||!relocationState.active||!isRoomHider()){
     if(!relocationState.active)resetLocalRelocationPlan();
     return;
   }
   if(!liveMarker)return;
+  maybeSignalRelocationOvertime();
   if(!localRelocationPlan||localRelocationPlan.index!==relocationState.index){
     localRelocationPlan=buildRelocationPlan({x:liveMarker.x,y:liveMarker.y});
     if(localRelocationPlan.skip)signalRelocationResult("skipped");
@@ -1286,7 +1326,7 @@ function updateRelocationUi(){
     }else{
       target.textContent=`${relocationSettings.minDistance} units minimum`;
       progress.textContent="Hidden from seekers";
-      message.textContent=remaining>0?"Questions are locked while the hider relocates.":"Relocation is overdue; questions remain locked until the hider completes the move.";
+      message.textContent=remaining>0?"Questions are locked while the hider relocates.":"Relocation overtime — the hider's last-known 200-unit area is revealed in red for 2 minutes.";
     }
   }else{
     const next=Math.max(0,Number(relocationState.nextAt||relocationSettings.firstAt)-now);
@@ -1588,7 +1628,7 @@ function tickMatchTimer(){
       relocationSchedulerError=String(err?.message||err);
       console.warn("Relocation state update failed",err);
     });
-    renderMatchTimer();updateGameAudioEvents();return;
+    renderMatchTimer();updateGameAudioEvents();refreshTransientMapOverlays();return;
   }
   if(!matchRunning){updateGameAudioEvents();return;}
   const now=performance.now();
@@ -1654,6 +1694,8 @@ function draw(){
     }
   }
 
+  drawOvertimeReveal();
+  drawHiderMissionTarget();
   if(showTowerRegions)drawTowerRegions();
   if(showGrid)drawGrid();
   if(showTowers)drawTowers();
@@ -1661,6 +1703,31 @@ function draw(){
   drawPlayerMarker();drawRuler();
   renderHistory();
 }
+function drawOvertimeReveal(){
+  const reveal=activeOvertimeReveal();
+  if(!reveal)return;
+  const c=mapToPixel(reveal.x,reveal.y),px=mapToPixel(reveal.x+reveal.radius,reveal.y),py=mapToPixel(reveal.x,reveal.y+reveal.radius);
+  const rx=Math.max(1,Math.hypot(px.x-c.x,px.y-c.y)),ry=Math.max(1,Math.hypot(py.x-c.x,py.y-c.y));
+  ctx.save();
+  ctx.beginPath();ctx.ellipse(c.x,c.y,rx,ry,0,0,Math.PI*2);
+  ctx.fillStyle="rgba(225,43,43,.50)";ctx.fill();
+  ctx.lineWidth=4;ctx.strokeStyle="rgba(255,112,112,.95)";ctx.stroke();
+  ctx.restore();
+}
+function drawHiderMissionTarget(){
+  if(!isRoomHider()||!Array.isArray(localHiderMissionTargetCells)||!localHiderMissionTargetCells.length)return;
+  ctx.save();
+  for(const cell of localHiderMissionTargetCells){
+    if(!cell||!Number.isFinite(Number(cell.x))||!Number.isFinite(Number(cell.y)))continue;
+    const half=Number(cell.size||25)/2;
+    const a=mapToPixel(Number(cell.x)-half,Number(cell.y)-half),b=mapToPixel(Number(cell.x)+half,Number(cell.y)+half);
+    const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(b.x-a.x),h=Math.abs(b.y-a.y);
+    ctx.fillStyle=HIDER_MISSION_TARGET_FILL;ctx.fillRect(x,y,w,h);
+    ctx.lineWidth=1.5;ctx.strokeStyle=HIDER_MISSION_TARGET_EDGE;ctx.strokeRect(x,y,w,h);
+  }
+  ctx.restore();
+}
+
 function drawTowerRegions(){
   ctx.save();
   const step=18;
