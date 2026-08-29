@@ -1,9 +1,10 @@
+using System;
 using BepInEx;
 using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using UnityEngine;
 
-[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.3")]
+[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.4")]
 public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
@@ -11,7 +12,7 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        Logger.LogInfo("Big Walk Hide + Seek 0.0.3 loaded.");
+        Logger.LogInfo("Big Walk Hide + Seek 0.0.4 loaded.");
         Logger.LogInfo("Press F7 to toggle the prototype overlay.");
         AddComponent<HideSeekOverlay>();
     }
@@ -45,12 +46,11 @@ public class HideSeekOverlay : MonoBehaviour
 
         if (overlayOpen)
         {
-            // IMGUI consuming mouse events does not automatically stop gameplay
-            // scripts from polling Unity's legacy input axes. Clear those axes
-            // while the overlay is open and keep the cursor released.
+            // Big Walk normally owns the cursor. Keep our UI cursor available
+            // while the Hide + Seek screen is open in case another game system
+            // tries to relock it.
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            Input.ResetInputAxes();
         }
     }
 
@@ -65,16 +65,85 @@ public class HideSeekOverlay : MonoBehaviour
         {
             previousCursorVisible = Cursor.visible;
             previousCursorLock = Cursor.lockState;
+
+            EnterBigWalkUiMode();
+
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            Input.ResetInputAxes();
-            Plugin.Logger.LogInfo("Hide + Seek overlay opened; gameplay input gate enabled.");
+            Plugin.Logger.LogInfo("Hide + Seek overlay opened; Big Walk UI mode enabled.");
         }
         else
         {
+            ExitBigWalkUiMode();
+
+            // Keep the old cursor state as a fallback. Big Walk's own
+            // SetToGameMode/SetLocked calls should normally own this.
             Cursor.visible = previousCursorVisible;
             Cursor.lockState = previousCursorLock;
-            Plugin.Logger.LogInfo("Hide + Seek overlay closed; gameplay input gate released.");
+            Plugin.Logger.LogInfo("Hide + Seek overlay closed; Big Walk game mode restored.");
+        }
+    }
+
+    private static void EnterBigWalkUiMode()
+    {
+        // These are Big Walk's own menu/input switches discovered in its
+        // generated Assembly-CSharp interop. Using them should disable player
+        // look/movement the same way the game's native menus do.
+        try
+        {
+            WorldManager.SetToUIMode();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogWarning($"WorldManager.SetToUIMode failed: {ex.Message}");
+        }
+
+        try
+        {
+            ControlsManager.SetMenuMode(true);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogWarning($"ControlsManager.SetMenuMode(true) failed: {ex.Message}");
+        }
+
+        try
+        {
+            CursorManager.SetFree();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogWarning($"CursorManager.SetFree failed: {ex.Message}");
+        }
+    }
+
+    private static void ExitBigWalkUiMode()
+    {
+        try
+        {
+            ControlsManager.SetMenuMode(false);
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogWarning($"ControlsManager.SetMenuMode(false) failed: {ex.Message}");
+        }
+
+        try
+        {
+            WorldManager.SetToGameMode();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogWarning($"WorldManager.SetToGameMode failed: {ex.Message}");
+        }
+
+        try
+        {
+            CursorManager.SetLocked();
+        }
+        catch (Exception ex)
+        {
+            Plugin.Logger.LogWarning($"CursorManager.SetLocked failed: {ex.Message}");
         }
     }
 
@@ -82,14 +151,6 @@ public class HideSeekOverlay : MonoBehaviour
     {
         if (!overlayOpen)
             return;
-
-        // Clear legacy input here as well. OnGUI runs separately from Update,
-        // which gives this prototype another chance to suppress mouse axes
-        // without relying on Unity script-execution-order attributes that are
-        // not exposed correctly by Big Walk's generated IL2CPP interop.
-        Input.ResetInputAxes();
-        Cursor.visible = true;
-        Cursor.lockState = CursorLockMode.None;
 
         EnsureStyles();
 
@@ -121,7 +182,7 @@ public class HideSeekOverlay : MonoBehaviour
         GUILayout.Label("Overlay foundation is working.", bodyStyle);
         GUILayout.Space(12f);
         GUILayout.Label(
-            "This first build is deliberately simple. If you can open this screen inside Big Walk and close it again without breaking the game, our next step is replacing this empty space with the actual map.",
+            "This build now uses Big Walk's own UI mode while the overlay is open. The camera and player controls should stop reacting until the overlay closes.",
             bodyStyle
         );
 
