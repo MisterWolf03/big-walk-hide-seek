@@ -69,3 +69,4 @@ jobs:
           git add v1.3-preview
           git commit -m "Publish Cross the Zone target-band preview"
           git push origin main
+# rerun after patch-anchor fix
