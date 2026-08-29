@@ -947,7 +947,7 @@
           <li>Cross the Zone privately highlights a purple far-side target inside the connected legal search area.</li>
           <li>Starting the mission cancels the pending forced-relocation countdown; completing or cancelling it starts a fresh relocation interval.</li>
           <li>Mission completion awards one Power Charge for the upcoming Hider power system.</li>
-          <li>Missions are optional: the Hider chooses when to start an available mission, and Seekers do not see mission countdowns or availability.</li>
+          <li>Missions are optional and completely private to the Hider UI: Seekers receive no mission countdown, availability, active-state, progress, or completion indication.</li>
           <li>Mission targets remain local to the Hider browser and are never uploaded to the room.</li>
         </ul>
       </div>
@@ -1513,11 +1513,11 @@ function updateGameDashboard(){
     else detail.textContent="Move to a legal new hiding area and press Ready when the target is met.";
     next.textContent=rem>0?"Target window active":"Overtime penalty active";return;
   }
-  if(missionState.active){
-    eyebrow.textContent="CURRENT OBJECTIVE";title.textContent=isHider?"Cross the Zone":"Hider mission active";
-    if(isHider&&liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
-    else detail.textContent=isHider?"Reach the private purple target area.":"The mission target and Hider progress remain private.";
-    next.textContent=isHider?"Forced relocation · paused":"Mission in progress";return;
+  if(missionState.active&&isHider){
+    eyebrow.textContent="CURRENT OBJECTIVE";title.textContent="Cross the Zone";
+    if(liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
+    else detail.textContent="Reach the private purple target area.";
+    next.textContent="Forced relocation · paused";return;
   }
   if(isHider&&missionState.available){eyebrow.textContent="OPTIONAL OBJECTIVE";title.textContent="Mission available";detail.textContent="Cross the Zone is ready whenever you want to take it.";return;}
   title.textContent=isHider?"Stay hidden":"Search for the Hider";
@@ -1838,9 +1838,8 @@ function updateMissionUi(){
   type.textContent="Cross the Zone";
   charges.textContent=isRoomHider()||!roomModeConnected()?String(Math.max(0,Number(hiderPowerCharges||0))):"Hidden";
   const now=currentMatchSeconds();
-  if(!roomModeConnected()){section.style.display="none";return;}
-  if(isRoomHider()&&!missionState.active&&!missionState.available){section.style.display="none";return;}
-  if(!isRoomHider()&&!missionState.active){section.style.display="none";return;}
+  if(!roomModeConnected()||!isRoomHider()){section.style.display="none";return;}
+  if(!missionState.active&&!missionState.available){section.style.display="none";return;}
   section.style.display="block";
   if(missionState.active){
     headline.textContent="ACTIVE";
@@ -2229,7 +2228,7 @@ function renderMatchTimer(){
   status.textContent="Match running.";
   if(hidingTimeRemaining()>.01)topSub.textContent="Hiding time";
   else if(roomModeConnected()&&relocationState.active&&isRoomHider())topSub.textContent="Forced relocation active";
-  else if(roomModeConnected()&&missionState.active)topSub.textContent=roomRole()==="hider"?"Hider mission active":"Match running";
+  else if(roomModeConnected()&&missionState.active&&isRoomHider())topSub.textContent="Hider mission active";
   else if(questionCooldownActive())topSub.textContent="Questions cooling down";
   else topSub.textContent="Questions ready";
 }
