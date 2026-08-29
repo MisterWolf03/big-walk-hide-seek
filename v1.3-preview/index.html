@@ -29,9 +29,20 @@
   .tabBtn:hover{background:#222934;color:#fff}
   .tabBtn.active{background:#302a16;border-color:#6c5a27;color:#ffe58b}
   #topTimer{
-    margin-left:auto;display:flex;align-items:center;gap:10px;white-space:nowrap;
+    margin-left:auto;display:flex;align-items:center;gap:8px;white-space:nowrap;
     padding-left:10px
   }
+  #topMatchControls{display:none;align-items:center;gap:6px;flex:0 0 auto}
+  #topMatchControls button{
+    width:34px;height:34px;min-width:34px;padding:0;display:grid;place-items:center;border-radius:8px
+  }
+  #topMatchControls button svg{
+    width:17px;height:17px;display:block;stroke:currentColor;fill:none;stroke-width:2.1;
+    stroke-linecap:round;stroke-linejoin:round;pointer-events:none
+  }
+  #topMatchControls #startMatchBtn{background:#6a5720;border-color:#8c7430;color:#fff}
+  #topMatchControls #pauseMatchBtn{background:#29323e;border-color:#3a4553;color:#f5f7fa}
+  #topMatchControls #resetMatchBtn{background:#4a2427;border-color:#6d3438;color:#fff}
   #topTimerClock{font-size:22px;font-weight:800;min-width:68px;text-align:right}
   #topTimerSub{font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis}
 
@@ -323,6 +334,8 @@
     #tabs{overflow-x:auto}
     .tabBtn{padding:7px 9px}
     #topTimerSub{display:none}
+    #topMatchControls{gap:4px}
+    #topMatchControls button{width:32px;height:32px;min-width:32px}
     #topEconomy{padding:5px 7px;gap:4px}
     #topEconomyValue{font-size:11px}
     #topEconomyRate{font-size:9px}
@@ -349,6 +362,17 @@
   <div id="topEconomy"><span id="topEconomyValue">0</span><span id="topEconomyRate"></span></div>
   <div id="roomTopStatus">Offline</div>
   <div id="topTimer">
+    <div id="topMatchControls" aria-label="Match controls">
+      <button id="resetMatchBtn" class="danger" type="button" title="Reset match" aria-label="Reset match" style="display:none">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v6h6"/><path d="M5.6 15a8 8 0 1 0 .9-7.2L4 10"/></svg>
+      </button>
+      <button id="startMatchBtn" class="primary" type="button" title="Start match" aria-label="Start match">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7Z"/></svg>
+      </button>
+      <button id="pauseMatchBtn" type="button" title="Pause match" aria-label="Pause match" style="display:none">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v14M15 5v14"/></svg>
+      </button>
+    </div>
     <div>
       <div id="topTimerClock">00:00</div>
       <div id="topTimerSub">Match not started</div>
@@ -485,16 +509,8 @@
         </div>
       </section>
 
-      <section id="matchControlSection" class="compactSection">
-        <h3>Match controls</h3>
-        <div id="matchTimer" style="display:none">00:00</div>
-        <div class="row">
-          <button class="primary" id="startMatchBtn">Start match</button>
-          <button id="pauseMatchBtn" disabled>Pause</button>
-        </div>
-        <button class="danger" id="resetMatchBtn" style="margin-top:8px">Reset match</button>
-        <div id="timerStatus" class="miniStatus">Start the match when everyone is ready.</div>
-      </section>
+      <div id="matchTimer" style="display:none">00:00</div>
+      <div id="timerStatus" style="display:none">Start the match when everyone is ready.</div>
 
       <section id="seekerPointsSection" class="compactSection" style="display:none">
         <h3>Seeker points</h3>
@@ -940,6 +956,14 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.3.0 preview — Match control polish</h4>
+        <ul>
+          <li>Moved host match controls into compact Play / Pause / Reset icons beside the match timer.</li>
+          <li>Reset appears only while a started match is paused.</li>
+          <li>Added a visual and audio cue when hiding time ends.</li>
+        </ul>
+      </div>
+      <div class="changeEntry">
         <h4>v1.3.0 preview — Mission reset + cues</h4>
         <ul>
           <li>Match reset now explicitly clears available/active mission state and all local mission progress.</li>
@@ -1284,6 +1308,7 @@ function playGameSound(name){
   const tone=(f,o,d,l=.7,t="sine")=>scheduleGameTone(ctx,f,o,d,l,t);
   if(name==="questionUnlock"){tone(659,.00,.13,.65,"triangle");tone(880,.10,.22,.8,"sine");}
   else if(name==="cooldownReady"){tone(523,.00,.10,.65,"triangle");tone(784,.08,.18,.75,"sine");}
+  else if(name==="hidingEnded"){tone(392,.00,.10,.55,"triangle");tone(587,.09,.12,.7,"triangle");tone(880,.20,.27,.9,"sine");}
   else if(name==="relocationStart"){tone(220,.00,.16,.9,"square");tone(165,.19,.16,.85,"square");tone(220,.38,.22,.95,"square");}
   else if(name==="relocationOvertime"){tone(880,.00,.13,1,"square");tone(660,.16,.13,1,"square");tone(880,.32,.13,1,"square");tone(440,.50,.34,1,"sawtooth");}
   else if(name==="relocationReady"){tone(440,.00,.10,.55,"triangle");tone(660,.09,.11,.65,"triangle");tone(880,.18,.20,.8,"sine");}
@@ -1300,6 +1325,7 @@ let gameCueTimer=null;
 const GAME_CUE_META={
   questionUnlock:{kind:"question",title:"Question unlocked",detail:"A new Seeker question type is available."},
   cooldownReady:{kind:"question",title:"Questions ready",detail:"The global question cooldown has ended."},
+  hidingEnded:{kind:"match",title:"Hiding time ended",detail:"The hiding phase is over. Normal play is now active."},
   relocationStart:{kind:"relocation",title:"Forced relocation",detail:"Move to a new legal hiding area before time runs out."},
   relocationOvertime:{kind:"relocation",title:"Relocation overtime",detail:"Your overtime reveal has triggered. Keep moving and finish the relocation."},
   relocationReady:{kind:"relocation",title:"Relocation target reached",detail:"You can press Ready once you have your new hiding spot."},
@@ -1348,6 +1374,7 @@ function captureAudioEventState(){
   const unlockCount=Object.values(unlockTimes).filter(t=>sec>=Number(t)).length;
   return {
     key:audioContextKey(),running:roomModeConnected()?roomMatchRunning():matchRunning,sec,unlockCount,
+    hidingActive:(roomModeConnected()?roomMatchRunning():matchRunning)&&Number(hidingSettings.duration||0)>0&&sec<Number(hidingSettings.duration||0),
     cooldownActive:!testingUnlockOverride&&(Number(questionCooldownUntil||0)-sec)>.01,
     relocationActive:roomModeConnected()&&!!relocationState.active,
     relocationOvertime:roomModeConnected()&&!!relocationState.active&&Number.isFinite(Number(relocationState.deadline))&&sec>=Number(relocationState.deadline),
@@ -1365,6 +1392,7 @@ function updateGameAudioEvents(){
   const prev=audioEventSnapshot;
   if(!prev.running&&now.running)triggerGameCue(now.sec<2?"matchStart":"matchResume");
   else if(prev.running&&!now.running&&now.sec>.1)triggerGameCue("matchPause");
+  if(prev.hidingActive&&!now.hidingActive&&now.running)triggerGameCue("hidingEnded");
   if(now.running&&now.unlockCount>prev.unlockCount)triggerGameCue("questionUnlock");
   if(prev.cooldownActive&&!now.cooldownActive)triggerGameCue("cooldownReady");
   if(!prev.relocationActive&&now.relocationActive)triggerGameCue("relocationStart");
@@ -1547,10 +1575,9 @@ function bindSettingDraftProtection(){
 function updateGameDashboard(){
   const card=document.getElementById("currentActionSection");if(!card)return;
   const eyebrow=document.getElementById("currentActionEyebrow"),title=document.getElementById("currentActionTitle"),timer=document.getElementById("currentActionTimer"),detail=document.getElementById("currentActionDetail"),next=document.getElementById("currentActionNext"),secondary=document.getElementById("currentActionSecondary");
-  const controls=document.getElementById("matchControlSection"),points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext");
+  const points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext");
   const connected=roomModeConnected(),role=connected?roomRole():null,isHider=role==="hider",isSeeker=role==="seeker",sec=currentMatchSeconds(),running=connected?roomMatchRunning():matchRunning;
   card.style.display=connected?"block":"none";
-  controls.style.display=connected&&!!window.BigWalkRooms?.isHost?.()?"block":"none";
   points.style.display="none";qSection.style.display=isSeeker?"block":"none";
   const hideRemaining=Math.max(0,Number(hidingSettings.duration||0)-sec);
   if(isSeeker){
@@ -2112,16 +2139,17 @@ function notifyRoomGameStateChanged(){
 function syncMatchControlButtons(){
   const connected=roomModeConnected();
   const canControl=!connected || !!window.BigWalkRooms?.canControlMatch?.();
-  const start=document.getElementById("startMatchBtn"),pause=document.getElementById("pauseMatchBtn"),reset=document.getElementById("resetMatchBtn");
-  const elapsed=currentMatchSeconds();
+  const dock=document.getElementById("topMatchControls"),start=document.getElementById("startMatchBtn"),pause=document.getElementById("pauseMatchBtn"),reset=document.getElementById("resetMatchBtn");
+  const elapsed=currentMatchSeconds(),paused=!matchRunning&&elapsed>0.01;
+  if(dock)dock.style.display=connected&&canControl?"flex":"none";
   if(matchRunning){
-    start.textContent="Running";start.disabled=true;pause.disabled=!canControl;
-  }else if(elapsed>0.01){
-    start.textContent="Resume";start.disabled=!canControl;pause.disabled=true;
+    start.style.display="none";pause.style.display="grid";reset.style.display="none";
+    pause.disabled=!canControl;pause.title="Pause match";pause.setAttribute("aria-label","Pause match");
   }else{
-    start.textContent="Start match";start.disabled=!canControl;pause.disabled=true;
+    start.style.display="grid";pause.style.display="none";reset.style.display=paused?"grid":"none";
+    start.disabled=!canControl;start.title=paused?"Resume match":"Start match";start.setAttribute("aria-label",paused?"Resume match":"Start match");
+    reset.disabled=!canControl;
   }
-  reset.disabled=connected&&!canControl;
 }
 window.BigWalkRoomBridge={
   getSharedGameState(){
@@ -2328,7 +2356,7 @@ function renderMatchTimer(){
   document.getElementById("matchTimer").textContent=time;
   document.getElementById("topTimerClock").textContent=time;
   updateLocalRelocation();updateRelocationUi();updateLocalHiderMission();updateMissionUi();
-  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();updateTopEconomy();updateRoomChrome();
+  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();updateTopEconomy();updateRoomChrome();syncMatchControlButtons();
 
   const status=document.getElementById("timerStatus"),topSub=document.getElementById("topTimerSub"),hiderView=isRoomHider();
   if(testingUnlockOverride&&!hiderView){status.textContent="Testing override active — all questions unlocked.";topSub.textContent="Testing override";return;}
@@ -2374,9 +2402,7 @@ function resetMatchState(){
   relocationState={active:false,index:0,scheduleToken:"",scheduleFrom:0,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();resetLocalRelocationSchedule();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
   missionState={active:false,available:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;missionStartRequestPending=false;missionSchedulerError="";resetLocalHiderMissionPlan();
   constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker ? "live" : null;nextMarkerId=1;rulerA=null;rulerB=null;
-  document.getElementById("startMatchBtn").textContent="Start match";
-  document.getElementById("startMatchBtn").disabled=false;
-  document.getElementById("pauseMatchBtn").disabled=true;
+  syncMatchControlButtons();
   ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
   updateMarkerPanel();updateRulerPanel();renderMatchTimer();draw();
 }
@@ -2800,17 +2826,13 @@ document.getElementById("startMatchBtn").onclick=()=>{
   if(roomModeConnected()){Promise.resolve(window.BigWalkRooms.startMatch()).catch(console.error);return;}
   if(matchRunning)return;
   matchRunning=true;matchLastTick=performance.now();
-  document.getElementById("startMatchBtn").textContent="Running";
-  document.getElementById("startMatchBtn").disabled=true;
-  document.getElementById("pauseMatchBtn").disabled=false;renderMatchTimer();
+  syncMatchControlButtons();renderMatchTimer();
 };
 document.getElementById("pauseMatchBtn").onclick=()=>{
   if(roomModeConnected()){Promise.resolve(window.BigWalkRooms.pauseMatch()).catch(console.error);return;}
   if(!matchRunning)return;
   tickMatchTimer();matchRunning=false;matchLastTick=null;
-  document.getElementById("startMatchBtn").textContent="Resume";
-  document.getElementById("startMatchBtn").disabled=false;
-  document.getElementById("pauseMatchBtn").disabled=true;renderMatchTimer();
+  syncMatchControlButtons();renderMatchTimer();
 };
 document.getElementById("resetMatchBtn").onclick=()=>{
   if(!confirm("Reset the match timer and clear all game state?"))return;
