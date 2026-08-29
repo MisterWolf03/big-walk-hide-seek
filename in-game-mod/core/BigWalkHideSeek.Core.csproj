@@ -5,9 +5,9 @@
     <Nullable>disable</Nullable>
     <AssemblyName>BigWalkHideSeek.Core</AssemblyName>
     <RootNamespace>BigWalkHideSeek.Core</RootNamespace>
-    <Version>0.0.7</Version>
-    <AssemblyVersion>0.0.7.0</AssemblyVersion>
-    <FileVersion>0.0.7.0</FileVersion>
+    <Version>0.0.8</Version>
+    <AssemblyVersion>0.0.8.0</AssemblyVersion>
+    <FileVersion>0.0.8.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,5 +41,17 @@
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.PhysicsModule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\big-walk-map.png">
+      <LogicalName>BigWalkHideSeek.Core.big-walk-map.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>
