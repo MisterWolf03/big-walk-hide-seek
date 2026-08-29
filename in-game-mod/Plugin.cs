@@ -3,7 +3,7 @@ using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using UnityEngine;
 
-[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.1")]
+[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.2")]
 public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
@@ -11,12 +11,13 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        Logger.LogInfo("Big Walk Hide + Seek 0.0.1 loaded.");
+        Logger.LogInfo("Big Walk Hide + Seek 0.0.2 loaded.");
         Logger.LogInfo("Press F7 to toggle the prototype overlay.");
         AddComponent<HideSeekOverlay>();
     }
 }
 
+[DefaultExecutionOrder(-10000)]
 public class HideSeekOverlay : MonoBehaviour
 {
     private bool overlayOpen;
@@ -38,7 +39,21 @@ public class HideSeekOverlay : MonoBehaviour
         }
 
         if (overlayOpen && Input.GetKeyDown(KeyCode.Escape))
+        {
             SetOverlayOpen(false);
+            return;
+        }
+
+        if (overlayOpen)
+        {
+            // The IMGUI overlay can consume mouse GUI events, but Big Walk's
+            // gameplay scripts can still poll Unity's input axes independently.
+            // Run this component very early and clear those axes every frame so
+            // the camera/player controls do not react behind the overlay.
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+            Input.ResetInputAxes();
+        }
     }
 
     private void SetOverlayOpen(bool open)
@@ -54,13 +69,14 @@ public class HideSeekOverlay : MonoBehaviour
             previousCursorLock = Cursor.lockState;
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            Plugin.Logger.LogInfo("Hide + Seek overlay opened.");
+            Input.ResetInputAxes();
+            Plugin.Logger.LogInfo("Hide + Seek overlay opened; gameplay input gate enabled.");
         }
         else
         {
             Cursor.visible = previousCursorVisible;
             Cursor.lockState = previousCursorLock;
-            Plugin.Logger.LogInfo("Hide + Seek overlay closed.");
+            Plugin.Logger.LogInfo("Hide + Seek overlay closed; gameplay input gate released.");
         }
     }
 
