@@ -956,6 +956,13 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.3.0 preview — Cross the Zone target polish</h4>
+        <ul>
+          <li>The purple mission overlay now uses the same raster alignment as eliminated zones.</li>
+          <li>Cross the Zone now includes the true far edge and highlights a broad far-side band, giving the Hider more route choices around difficult terrain.</li>
+        </ul>
+      </div>
+      <div class="changeEntry">
         <h4>v1.3.0 preview — Cross the Zone completion</h4>
         <ul>
           <li>Cross the Zone no longer auto-completes when the Hider first enters the purple target.</li>
@@ -1623,7 +1630,7 @@ function updateGameDashboard(){
   }
   if(missionState.active&&isHider){
     eyebrow.textContent="CURRENT OBJECTIVE";title.textContent="Cross the Zone";
-    if(liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const inTarget=pointInMissionTarget(liveMarker,localHiderMissionPlan),d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=inTarget?"Target reached — choose your new hiding spot, then complete the mission.":Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
+    if(liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const inTarget=pointInMissionTarget(liveMarker,localHiderMissionPlan),d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=inTarget?"Target reached — choose your new hiding spot, then complete the mission.":Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple far-side band.`:"Reach the private purple far-side band.";}
     else detail.textContent="Reach the private purple target area.";
     next.textContent="Forced relocation · paused";return;
   }
@@ -1871,17 +1878,13 @@ function buildCrossZoneMissionPlan(start){
     return {x,y,size:Number(region.step||25),key,distance:Math.hypot(x-start.x,y-start.y)};
   }).filter(c=>Number.isFinite(c.x)&&Number.isFinite(c.y));
   if(cells.length<4)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
-  let farthest=cells[0];
-  for(const c of cells)if(c.distance>farthest.distance)farthest=c;
-  if(!farthest||farthest.distance<100)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
-  const vx=farthest.x-start.x,vy=farthest.y-start.y,len=Math.hypot(vx,vy);
-  if(len<1)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
-  const ux=vx/len,uy=vy/len;
-  for(const c of cells)c.projection=(c.x-start.x)*ux+(c.y-start.y)*uy;
-  const maxProjection=Math.max(...cells.map(c=>c.projection));
-  let targetCells=cells.filter(c=>c.projection>=maxProjection*.72&&c.projection<=maxProjection*.90&&c.distance>=farthest.distance*.55);
-  if(targetCells.length<4)targetCells=cells.filter(c=>c.projection>=maxProjection*.70&&c.projection<=maxProjection*.97&&c.distance>=farthest.distance*.50);
-  if(targetCells.length<3)targetCells=cells.filter(c=>c.projection>=maxProjection*.70);
+  const maxDistance=Math.max(...cells.map(c=>c.distance));
+  if(maxDistance<1)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
+  // Cross the Zone is intentionally a broad far-side band instead of one directional wedge.
+  // This reaches the true outer edge and gives the Hider multiple route choices around terrain.
+  let targetCells=cells.filter(c=>c.distance>=maxDistance*.75);
+  if(targetCells.length<6)targetCells=cells.filter(c=>c.distance>=maxDistance*.68);
+  if(targetCells.length<3)targetCells=cells.filter(c=>c.distance>=maxDistance*.60);
   if(!targetCells.length)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
   return {
     index:Number(missionState.index||0),token:String(missionState.token||""),start:{x:Number(start.x),y:Number(start.y)},
@@ -2017,7 +2020,7 @@ function updateMissionUi(){
           startBtn.style.display="block";startBtn.disabled=false;startBtn.textContent="Complete mission";
         }else{
           progress.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to target`:"Target active";
-          message.textContent="Reach the purple target area on the opposite side of the remaining legal search zone. The target is visible only to you.";
+          message.textContent="Reach any part of the purple far-side band in the remaining legal search zone. The target is visible only to you.";
         }
       }
     }else{
@@ -2483,15 +2486,16 @@ function drawOvertimeReveal(){
   ctx.restore();
 }
 function drawHiderMissionTarget(){
-  if(!isRoomHider()||!Array.isArray(localHiderMissionTargetCells)||!localHiderMissionTargetCells.length)return;
+  if(!isRoomHider()||!localHiderMissionPlan||!Array.isArray(localHiderMissionTargetCells)||!localHiderMissionTargetCells.length)return;
+  // Match the eliminated-zone raster exactly so purple cells line up with the dark mask.
+  const step=10;
   ctx.save();
-  for(const cell of localHiderMissionTargetCells){
-    if(!cell||!Number.isFinite(Number(cell.x))||!Number.isFinite(Number(cell.y)))continue;
-    const half=Number(cell.size||25)/2;
-    const a=mapToPixel(Number(cell.x)-half,Number(cell.y)-half),b=mapToPixel(Number(cell.x)+half,Number(cell.y)+half);
-    const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(b.x-a.x),h=Math.abs(b.y-a.y);
-    ctx.fillStyle=HIDER_MISSION_TARGET_FILL;ctx.fillRect(x,y,w,h);
-    ctx.lineWidth=1.5;ctx.strokeStyle=HIDER_MISSION_TARGET_EDGE;ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle=HIDER_MISSION_TARGET_FILL;
+  for(let py=0;py<canvas.height;py+=step){
+    for(let px=0;px<canvas.width;px+=step){
+      const p=pixelToMap(px+step/2,py+step/2);
+      if(pointInMissionTarget(p,localHiderMissionPlan))ctx.fillRect(px,py,step+1,step+1);
+    }
   }
   ctx.restore();
 }
