@@ -1687,7 +1687,7 @@ function updateGameDashboard(){
       const plan=localHiderMissionPlan,homeD=missionHomeDistance(plan),inTarget=pointInMissionTarget(liveMarker,plan),d=missionDistanceToTarget(liveMarker,plan);
       if(plan.returningHome)detail.textContent=Number.isFinite(homeD)?`${Math.max(0,Math.round(homeD))} units back to your hiding spot.`:"Return to your original hiding spot.";
       else if(plan.missionType==="crossReturn"&&inTarget){
-        const held=Number.isFinite(Number(plan.holdStartedAt))?Math.max(0,currentMatchSeconds()-Number(plan.holdStartedAt)):0,remaining=Math.max(0,Number(plan.holdSeconds||CROSS_RETURN_HOLD_SECONDS)-held);
+        const held=plan.holdStartedAt!==null&&Number.isFinite(Number(plan.holdStartedAt))?Math.max(0,currentMatchSeconds()-Number(plan.holdStartedAt)):0,remaining=Math.max(0,Number(plan.holdSeconds||CROSS_RETURN_HOLD_SECONDS)-held);
         detail.textContent=`Hold the purple zone continuously · ${formatTime(Math.ceil(remaining))} remaining.`;
       }else if(inTarget)detail.textContent="Target reached — choose your new hiding spot, then complete the mission.";
       else detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple far-side band.`:"Reach the private purple far-side band.";
@@ -2098,8 +2098,8 @@ function updateLocalHiderMission(){
   if(plan.missionType==="crossReturn"){
     const inTarget=pointInMissionTarget(liveMarker,plan);
     if(inTarget){
-      if(!Number.isFinite(Number(plan.holdStartedAt)))plan.holdStartedAt=currentMatchSeconds();
-      const held=Math.max(0,currentMatchSeconds()-Number(plan.holdStartedAt||currentMatchSeconds()));
+      if(plan.holdStartedAt===null||!Number.isFinite(Number(plan.holdStartedAt)))plan.holdStartedAt=currentMatchSeconds();
+      const held=Math.max(0,currentMatchSeconds()-Number(plan.holdStartedAt));
       if(held>=Number(plan.holdSeconds||CROSS_RETURN_HOLD_SECONDS)){
         beginMissionReturnHome(plan,"completed","Hold complete. Return within 5 units of the hiding spot where you started the mission to earn 2 Power Charges.");
         renderMatchTimer();
@@ -2197,7 +2197,7 @@ function updateMissionUi(){
           const d=missionDistanceToTarget(liveMarker,plan);
           if(inTarget){
             if(plan.missionType==="crossReturn"){
-              const held=Number.isFinite(Number(plan.holdStartedAt))?Math.max(0,currentMatchSeconds()-Number(plan.holdStartedAt)):0;
+              const held=plan.holdStartedAt!==null&&Number.isFinite(Number(plan.holdStartedAt))?Math.max(0,currentMatchSeconds()-Number(plan.holdStartedAt)):0;
               const holdRemaining=Math.max(0,Number(plan.holdSeconds||CROSS_RETURN_HOLD_SECONDS)-held);
               progress.textContent=`Hold · ${formatTime(Math.ceil(holdRemaining))}`;
               message.textContent="Stay continuously inside the purple target for 1 minute. Leaving the target resets the hold timer. When it reaches zero, your hiding spot guide will appear and you must return home.";
