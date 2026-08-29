@@ -539,6 +539,7 @@
         <div class="metric" style="display:none"><b>Power Charges</b><span class="powerCharge" id="hiderPowerCharges">0</span></div>
         <div id="missionMessage" class="small" style="margin-top:8px"></div>
         <button class="primary" id="missionStartBtn" style="display:none;margin-top:8px">Start mission</button>
+        <button id="missionFallbackBtn" style="display:none;margin-top:8px">Impossible route</button>
       </section>
 
       <section id="questionNextSection" class="compactSection">
@@ -955,6 +956,15 @@
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.3.0 preview — Impossible Route fallback</h4>
+        <ul>
+          <li>Cross the Zone now offers one guarded Impossible Route reroll during the first 90 seconds and only within 20 units of the mission start.</li>
+          <li>The replacement target must be at least as far away and substantially different from the rejected target.</li>
+          <li>After the reroll, Abort mission is the only fallback and requires returning within 5 units of the original hiding spot for no reward.</li>
+          <li>Purple target raster cells no longer count or draw over eliminated coordinates.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.3.0 preview — Cross the Zone target polish</h4>
         <ul>
@@ -1870,7 +1880,14 @@ function nextMissionDelay(){
   const hi=Math.max(lo,Number(missionSettings.maxInterval||900));
   return Math.round((lo+Math.random()*(hi-lo))/15)*15;
 }
-function buildCrossZoneMissionPlan(start){
+function missionAngleDelta(a,b){
+  let d=Math.abs(Number(a)-Number(b))%(Math.PI*2);
+  return d>Math.PI?Math.PI*2-d:d;
+}
+function crossZoneCellsForAngle(cells,start,angle,minDistance,halfAngle){
+  return cells.filter(c=>c.distance>=minDistance&&missionAngleDelta(Math.atan2(c.y-start.y,c.x-start.x),angle)<=halfAngle);
+}
+function buildCrossZoneMissionPlan(start,opts={}){
   const region=buildRelocationPlan(start);
   if(!region||region.invalid||!region.seen||!region.seen.size)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
   const cells=Array.from(region.seen,key=>{
@@ -1880,20 +1897,73 @@ function buildCrossZoneMissionPlan(start){
   if(cells.length<4)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
   const maxDistance=Math.max(...cells.map(c=>c.distance));
   if(maxDistance<1)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
-  // Cross the Zone is intentionally a broad far-side band instead of one directional wedge.
-  // This reaches the true outer edge and gives the Hider multiple route choices around terrain.
-  let targetCells=cells.filter(c=>c.distance>=maxDistance*.75);
-  if(targetCells.length<6)targetCells=cells.filter(c=>c.distance>=maxDistance*.68);
-  if(targetCells.length<3)targetCells=cells.filter(c=>c.distance>=maxDistance*.60);
-  if(!targetCells.length)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true};
+
+  const rerollFrom=opts.rerollFrom||null;
+  let minDistance=rerollFrom?Number(rerollFrom.minTargetDistance||0):maxDistance*.70;
+  if(!rerollFrom){
+    let probe=cells.filter(c=>c.distance>=minDistance);
+    if(probe.length<6){minDistance=maxDistance*.62;probe=cells.filter(c=>c.distance>=minDistance);}
+    if(probe.length<3)minDistance=maxDistance*.55;
+  }
+
+  let centerAngle=null,targetCells=[];
+  if(!rerollFrom){
+    const farthest=cells.reduce((best,c)=>c.distance>best.distance?c:best,cells[0]);
+    centerAngle=Math.atan2(farthest.y-start.y,farthest.x-start.x);
+    targetCells=crossZoneCellsForAngle(cells,start,centerAngle,minDistance,Math.PI/3);
+    if(targetCells.length<4)targetCells=crossZoneCellsForAngle(cells,start,centerAngle,minDistance,Math.PI/2);
+  }else{
+    const rejected=rerollFrom.targetKeys instanceof Set?rerollFrom.targetKeys:new Set();
+    const rejectedAngle=Number(rerollFrom.centerAngle);
+    const centerCandidates=cells.filter(c=>c.distance>=minDistance).sort((x,y)=>y.distance-x.distance);
+    let best=null;
+    for(const c of centerCandidates){
+      const angle=Math.atan2(c.y-start.y,c.x-start.x);
+      if(Number.isFinite(rejectedAngle)&&missionAngleDelta(angle,rejectedAngle)<Math.PI/2)continue;
+      for(const halfAngle of [Math.PI/3,Math.PI/4,Math.PI/6]){
+        const candidate=crossZoneCellsForAngle(cells,start,angle,minDistance,halfAngle);
+        if(candidate.length<3)continue;
+        const overlap=candidate.filter(cell=>rejected.has(cell.key)).length/candidate.length;
+        if(overlap>.25)continue;
+        const avg=candidate.reduce((sum,cell)=>sum+cell.distance,0)/candidate.length;
+        const score=avg+(1-overlap)*maxDistance*.1;
+        if(!best||score>best.score)best={angle,cells:candidate,score};
+      }
+    }
+    if(best){centerAngle=best.angle;targetCells=best.cells;}
+  }
+
+  if(!targetCells.length)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true,noComparableAlternate:!!rerollFrom};
+  const actualMinDistance=Math.min(...targetCells.map(c=>c.distance));
   return {
     index:Number(missionState.index||0),token:String(missionState.token||""),start:{x:Number(start.x),y:Number(start.y)},
     step:Number(region.step||25),targetCells,targetKeys:new Set(targetCells.map(c=>c.key)),
-    constraintKey:missionConstraintKey(),signaled:false,pendingResult:"",invalid:false
+    constraintKey:missionConstraintKey(),signaled:false,pendingResult:"",invalid:false,
+    centerAngle,minTargetDistance:actualMinDistance,maxDistance,rerollUsed:!!rerollFrom,noAlternate:false,returningHome:false
   };
 }
+function rerollCrossZoneMissionPlan(plan){
+  if(!plan||plan.rerollUsed||!plan.start)return false;
+  const alt=buildCrossZoneMissionPlan(plan.start,{rerollFrom:plan});
+  if(!alt||alt.invalid){
+    plan.rerollUsed=true;plan.noAlternate=true;
+    localHiderMissionTargetCells=[];
+    if(appInitialized)draw();
+    return false;
+  }
+  alt.rerollUsed=true;
+  localHiderMissionPlan=alt;
+  localHiderMissionTargetCells=alt.targetCells.map(c=>({x:c.x,y:c.y,size:c.size}));
+  if(appInitialized)draw();
+  return true;
+}
+function missionHomeDistance(plan,p=liveMarker){
+  if(!plan?.start||!p)return Number.NaN;
+  return Math.hypot(Number(p.x)-Number(plan.start.x),Number(p.y)-Number(plan.start.y));
+}
+
 function pointInMissionTarget(p,plan){
-  if(!p||!plan?.targetKeys||!plan.step)return false;
+  if(!p||!plan?.targetKeys||!plan.step||!allowedAt(Number(p.x),Number(p.y)))return false;
   const x=Math.round(Number(p.x)/plan.step)*plan.step,y=Math.round(Number(p.y)/plan.step)*plan.step;
   return plan.targetKeys.has(relocationCellKey(x,y));
 }
@@ -1929,6 +1999,12 @@ function updateLocalHiderMission(){
   }
   const plan=localHiderMissionPlan;
   if(!plan||plan.invalid||plan.signaled)return;
+  if(plan.returningHome){
+    const homeD=missionHomeDistance(plan);
+    if(Number.isFinite(homeD)&&homeD<=5)signalMissionResult("cancelled");
+    return;
+  }
+  if(plan.noAlternate)return;
   const currentConstraintKey=missionConstraintKey();
   if(currentConstraintKey!==plan.constraintKey){
     const reachable=buildRelocationPlan({x:Number(liveMarker.x),y:Number(liveMarker.y)});
@@ -1992,10 +2068,11 @@ async function maybeHostAdvanceMission(){
   }finally{missionMutationBusy=false;}
 }
 function updateMissionUi(){
-  const section=document.getElementById("missionGameSection"),headline=document.getElementById("missionHeadline"),status=document.getElementById("missionStatus"),type=document.getElementById("missionType"),progress=document.getElementById("missionProgress"),charges=document.getElementById("hiderPowerCharges"),message=document.getElementById("missionMessage"),startBtn=document.getElementById("missionStartBtn");
+  const section=document.getElementById("missionGameSection"),headline=document.getElementById("missionHeadline"),status=document.getElementById("missionStatus"),type=document.getElementById("missionType"),progress=document.getElementById("missionProgress"),charges=document.getElementById("hiderPowerCharges"),message=document.getElementById("missionMessage"),startBtn=document.getElementById("missionStartBtn"),fallbackBtn=document.getElementById("missionFallbackBtn");
   if(!section)return;
   if(!missionState.available)missionStartRequestPending=false;
   startBtn.style.display="none";startBtn.disabled=true;startBtn.textContent="Start mission";
+  fallbackBtn.style.display="none";fallbackBtn.disabled=false;fallbackBtn.textContent="Impossible route";fallbackBtn.classList.remove("danger");
   section.classList.toggle("missionActive",!!missionState.active);
   type.textContent="Cross the Zone";
   charges.textContent=isRoomHider()||!roomModeConnected()?String(Math.max(0,Number(hiderPowerCharges||0))):"Hidden";
@@ -2012,15 +2089,31 @@ function updateMissionUi(){
       else if(localHiderMissionPlan.invalid){progress.textContent="Cancelling…";message.textContent="No safe opposite-side target is available. The relocation timer will restart fresh.";}
       else if(localHiderMissionPlan.signaled){progress.textContent=localHiderMissionPlan.pendingResult==="completed"?"Target reached":"Cancelling";message.textContent=localHiderMissionPlan.pendingResult==="completed"?"Mission complete — confirming your Power Charge and restarting the relocation timer.":"Mission target became invalid — restarting the relocation timer.";}
       else{
-        const inTarget=pointInMissionTarget(liveMarker,localHiderMissionPlan);
-        const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);
-        if(inTarget){
-          progress.textContent="Target reached";
-          message.textContent="You are inside the purple target area. Find your new hiding spot, then press Complete mission while you remain inside the zone.";
-          startBtn.style.display="block";startBtn.disabled=false;startBtn.textContent="Complete mission";
+        const plan=localHiderMissionPlan,homeD=missionHomeDistance(plan),elapsed=Math.max(0,currentMatchSeconds()-Number(missionState.startedAt||currentMatchSeconds()));
+        if(plan.returningHome){
+          progress.textContent=Number.isFinite(homeD)?`${Math.max(0,Math.round(homeD))} units to hiding spot`:"Return home";
+          message.textContent="Mission aborted. Return within 5 units of the hiding spot where you started the mission. No Power Charge will be awarded.";
+        }else if(plan.noAlternate){
+          progress.textContent="No alternate target";
+          message.textContent="No equally distant alternate target could be generated. Abort the mission and return to your original hiding spot for no reward.";
+          fallbackBtn.style.display="block";fallbackBtn.textContent="Abort mission";fallbackBtn.classList.add("danger");
         }else{
-          progress.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to target`:"Target active";
-          message.textContent="Reach any part of the purple far-side band in the remaining legal search zone. The target is visible only to you.";
+          const inTarget=pointInMissionTarget(liveMarker,plan);
+          const d=missionDistanceToTarget(liveMarker,plan);
+          if(inTarget){
+            progress.textContent="Target reached";
+            message.textContent="You are inside the purple target area. Find your new hiding spot, then press Complete mission while you remain inside the zone.";
+            startBtn.style.display="block";startBtn.disabled=false;startBtn.textContent="Complete mission";
+          }else{
+            progress.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to target`:"Target active";
+            message.textContent=plan.rerollUsed?"Reach the replacement purple target. Impossible Route has already been used for this mission.":"Reach the purple far-side target. If terrain makes it genuinely unreachable, you can use Impossible Route once while you are still near your starting hiding spot.";
+          }
+          if(plan.rerollUsed){
+            fallbackBtn.style.display="block";fallbackBtn.textContent="Abort mission";fallbackBtn.classList.add("danger");
+          }else if(elapsed<=90&&Number.isFinite(homeD)&&homeD<=20){
+            fallbackBtn.style.display="block";fallbackBtn.textContent="Impossible route";
+            fallbackBtn.title=`One reroll available · ${Math.max(0,90-Math.floor(elapsed))}s remaining · stay within 20 units of your start`;
+          }
         }
       }
     }else{
@@ -2494,7 +2587,7 @@ function drawHiderMissionTarget(){
   for(let py=0;py<canvas.height;py+=step){
     for(let px=0;px<canvas.width;px+=step){
       const p=pixelToMap(px+step/2,py+step/2);
-      if(pointInMissionTarget(p,localHiderMissionPlan))ctx.fillRect(px,py,step+1,step+1);
+      if(allowedAt(p.x,p.y)&&pointInMissionTarget(p,localHiderMissionPlan))ctx.fillRect(px,py,step+1,step+1);
     }
   }
   ctx.restore();
@@ -3098,6 +3191,23 @@ document.getElementById("missionStartBtn").onclick=async()=>{
     console.warn("Mission start request failed",err);missionStartRequestPending=false;renderMatchTimer();
   }
 };
+document.getElementById("missionFallbackBtn").onclick=()=>{
+  if(!isRoomHider()||!missionState.active||!roomMatchRunning()||!liveMarker)return;
+  const plan=localHiderMissionPlan;
+  if(!plan||plan.invalid||plan.signaled||plan.returningHome)return;
+  const homeD=missionHomeDistance(plan),elapsed=Math.max(0,currentMatchSeconds()-Number(missionState.startedAt||currentMatchSeconds()));
+  if(!plan.rerollUsed){
+    if(elapsed>90||!Number.isFinite(homeD)||homeD>20)return;
+    if(!window.confirm("Reroll this Cross the Zone target? You can only use Impossible Route once this mission, and the replacement will not be closer than the current target."))return;
+    rerollCrossZoneMissionPlan(plan);
+    renderMatchTimer();draw();return;
+  }
+  if(!window.confirm("Abort this mission? You will earn no Power Charge and must return within 5 units of your original hiding spot."))return;
+  plan.returningHome=true;plan.noAlternate=false;localHiderMissionTargetCells=[];
+  if(Number.isFinite(homeD)&&homeD<=5)signalMissionResult("cancelled");
+  renderMatchTimer();draw();
+};
+
 document.getElementById("relocationReadyBtn").onclick=()=>{
   if(!isRoomHider()||!relocationState.active||!localRelocationPlan||localRelocationPlan.invalid||localRelocationPlan.skip||localRelocationPlan.signaled)return;
   if(!liveMarker)return;
