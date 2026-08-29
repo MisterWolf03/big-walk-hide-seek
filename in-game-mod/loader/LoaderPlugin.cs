@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -11,7 +12,7 @@ using BepInEx.Unity.IL2CPP;
 
 namespace BigWalkHideSeek.Loader;
 
-[BepInPlugin("com.bigwalkhideseek.loader", "Big Walk Hide + Seek Loader", "0.1.0")]
+[BepInPlugin("com.bigwalkhideseek.loader", "Big Walk Hide + Seek Loader", "0.1.1")]
 public sealed class LoaderPlugin : BasePlugin
 {
     internal static ManualLogSource Logger;
@@ -19,7 +20,7 @@ public sealed class LoaderPlugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        Logger.LogInfo("Big Walk Hide + Seek Loader 0.1.0 starting.");
+        Logger.LogInfo("Big Walk Hide + Seek Loader 0.1.1 starting.");
 
         try
         {
@@ -74,7 +75,7 @@ public sealed class LoaderPlugin : BasePlugin
 
         if (config == null || !config.Enabled || string.IsNullOrWhiteSpace(config.ManifestUrl))
         {
-            Logger.LogInfo("Automatic Core update check skipped: no private manifest URL configured yet.");
+            Logger.LogInfo("Automatic Core update check skipped: no manifest URL configured.");
             return;
         }
 
@@ -101,7 +102,7 @@ public sealed class LoaderPlugin : BasePlugin
             }
 
             Logger.LogInfo($"Updating Core {installedVersion} -> {remoteVersion}...");
-            byte[] bytes = client.GetByteArrayAsync(manifest.Url.Trim()).GetAwaiter().GetResult();
+            byte[] bytes = DownloadCoreBytes(client, manifest);
             string actualHash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
             string expectedHash = manifest.Sha256.Trim().Replace("-", string.Empty).ToLowerInvariant();
 
@@ -123,6 +124,31 @@ public sealed class LoaderPlugin : BasePlugin
         {
             Logger.LogWarning($"Update check failed; continuing with installed Core. {ex.Message}");
         }
+    }
+
+    private static byte[] DownloadCoreBytes(HttpClient client, UpdateManifest manifest)
+    {
+        string encoding = (manifest.Encoding ?? string.Empty).Trim().ToLowerInvariant();
+
+        if (string.IsNullOrEmpty(encoding) || encoding == "raw")
+            return client.GetByteArrayAsync(manifest.Url.Trim()).GetAwaiter().GetResult();
+
+        string payload = client.GetStringAsync(manifest.Url.Trim()).GetAwaiter().GetResult();
+        byte[] encodedBytes = Convert.FromBase64String(payload);
+
+        if (encoding == "base64")
+            return encodedBytes;
+
+        if (encoding == "gzip-base64")
+        {
+            using var compressed = new MemoryStream(encodedBytes, writable: false);
+            using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            gzip.CopyTo(output);
+            return output.ToArray();
+        }
+
+        throw new InvalidDataException($"Unsupported Core encoding: {manifest.Encoding}");
     }
 
     private void LoadCore(string corePath, string backupPath)
@@ -241,5 +267,6 @@ public sealed class LoaderPlugin : BasePlugin
         public string Version { get; set; } = string.Empty;
         public string Url { get; set; } = string.Empty;
         public string Sha256 { get; set; } = string.Empty;
+        public string Encoding { get; set; } = "raw";
     }
 }
