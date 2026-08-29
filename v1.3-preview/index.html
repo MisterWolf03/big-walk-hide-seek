@@ -225,6 +225,38 @@
   .historyGroup>summary{cursor:pointer;padding:11px 12px;font-size:13px;font-weight:800}
   .historyBody{padding:0 12px 12px}
   #liveLocationSection.liveConnected .liveLocationExtra{display:none}
+  /* v1.3 pass 2: compact questions + room chrome */
+  .questionCard{padding:9px 11px;margin-bottom:8px}
+  .questionCard h3{font-size:15px;margin-bottom:6px;letter-spacing:.1px}
+  .questionCard .questionCost{font-size:10px;margin:-2px 0 6px}
+  .questionCard label{font-size:11px;margin:6px 0 3px}
+  .questionCard input,.questionCard select,.questionCard button{padding:7px 8px;min-height:36px}
+  .questionCard p.small{font-size:11px;line-height:1.35;margin:6px 0}
+  .questionCard .validation{min-height:12px;margin-top:4px}
+  .questionCard .lockNotice{padding:6px 7px;font-size:11px;margin-bottom:6px}
+  #topRoomActions{display:none;align-items:center;gap:6px;flex:0 0 auto}
+  #topRoomActions button{width:auto;padding:6px 9px;min-height:34px}
+  #roomPlayersBtn{display:flex;align-items:center;gap:6px}
+  #roomPlayersBtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  #roomPlayerCount{font-size:12px;font-weight:900}
+  #topLeaveRoomBtn{background:#3b2226;border-color:#6d3438}
+  #roomConnected{display:none!important;position:fixed;top:52px;right:14px;width:min(320px,calc(100vw - 28px));z-index:90;padding:10px;background:rgba(23,28,35,.99);border:1px solid #465362;border-radius:12px;box-shadow:var(--shadow)}
+  #roomConnected.open{display:block!important}
+  #roomConnected h3{font-size:13px;margin:0 0 8px}
+  #roomConnected .roomMemberList{margin-top:0}
+  .roomPopoverMeta{display:none!important}
+  #roomDisconnected>section{margin-bottom:0}
+  .roomEntryGrid{display:grid;grid-template-columns:1fr 120px;gap:8px}
+  .roomJoinRow{display:grid;grid-template-columns:1fr 110px;gap:8px;margin-top:9px}
+  .roomJoinRow button{margin-top:0!important}
+  .roomOr{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.8px;margin:10px 0 2px}
+  .roomOr:before,.roomOr:after{content:'';height:1px;background:#394350;flex:1}
+  .priceBlock{padding:9px;border:1px solid #394350;border-radius:9px;background:#171b21;margin-bottom:8px}
+  .priceBlock:last-of-type{margin-bottom:0}
+  .priceBlock strong{display:block;font-size:11px;margin-bottom:7px;color:#dce3eb}
+  .settingCheck{display:flex;align-items:flex-start;gap:7px;margin-top:8px}
+  .settingCheck input{width:auto;min-width:auto;margin:2px 0 0}
+  .settingCheck span{font-size:12px;color:#d7dee7;line-height:1.35}
   .roomStatus{
     margin-bottom:10px;padding:8px 10px;border:1px solid #394350;border-radius:9px;
     background:#171b21;color:#cbd3dd;font-size:12px;line-height:1.4
@@ -256,6 +288,8 @@
     #tabs{overflow-x:auto}
     .tabBtn{padding:7px 9px}
     #topTimerSub{display:none}
+    #roomConnected{right:8px;top:52px}
+    #topLeaveRoomBtn{font-size:11px;padding:6px 7px}
     #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
     .mapToolBtn{width:40px;height:40px;min-width:40px}
     #waypointNamePopover{left:50px;width:170px}
@@ -278,6 +312,25 @@
     <div>
       <div id="topTimerClock">00:00</div>
       <div id="topTimerSub">Match not started</div>
+    </div>
+  </div>
+  <div id="topRoomActions">
+    <button id="roomPlayersBtn" type="button" title="Players in room" aria-label="Show players" aria-expanded="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span id="roomPlayerCount">0</span>
+    </button>
+    <button id="leaveRoomBtn" class="danger" type="button">Leave Room</button>
+  </div>
+
+  <div id="roomConnected" aria-label="Room players">
+    <h3>Players</h3>
+    <div id="roomMemberList" class="roomMemberList"></div>
+    <div class="roomPopoverMeta">
+      <div id="currentRoomCode">—</div>
+      <span id="currentRoomRole">—</span>
+      <span id="currentRoomHost">—</span>
+      <span id="roomHostControlsNote"></span>
+      <button id="copyRoomCodeBtn" type="button">Copy code</button>
     </div>
   </div>
 </div>
@@ -323,7 +376,6 @@
       <div class="panelHeader"><h2>More</h2><button class="closePanel">Hide</button></div>
       <section>
         <div class="moreGrid">
-          <button data-open-view="room"><b>Room</b><span>Players, room code, connection</span></button>
           <button data-open-view="rules"><b>Rules</b><span>Game rules and timing reference</span></button>
           <button data-open-view="settings"><b>Settings</b><span>Timing, relocation, map, sound</span></button>
           <button data-open-view="changelog"><b>Changelog</b><span>Preview and release history</span></button>
@@ -331,60 +383,31 @@
       </section>
     </div>
 
-    <div id="view-room" class="panelView">
-      <div class="panelHeader"><h2>Room <span class="small">v1.3.0 preview</span></h2><button class="closePanel">Hide</button></div>
-      <div id="roomStatus" class="roomStatus">Initializing room service…</div>
-      <div id="roomSetupNotice" class="roomSetupNotice">Rooms need a Firebase Realtime Database project before they can connect across devices. Follow <b>ROOMS_SETUP.md</b> in the repo, then add the Firebase web config to <b>firebase-config.js</b>.</div>
-
-      <div id="roomDisconnected">
-        <section>
-          <h3>Your room identity</h3>
-          <label>Display name</label>
-          <input id="roomPlayerName" type="text" maxlength="28" autocomplete="nickname" placeholder="e.g. Xypher">
-          <label>Role</label>
-          <select id="roomRoleSelect">
-            <option value="seeker">Seeker</option>
-            <option value="hider">Hider</option>
-          </select>
-          <p class="small">Roles only control shared match tools in this first room build. Hider position is not uploaded or revealed.</p>
-        </section>
-        <section>
-          <h3>Create a room</h3>
-          <button id="createRoomBtn" class="primary">Create room</button>
-          <p class="small">Creates a six-character room code and makes you the room host.</p>
-        </section>
-        <section>
-          <h3>Join a room</h3>
-          <input id="roomJoinCode" class="roomJoinCode" type="text" maxlength="6" autocomplete="off" placeholder="ABC123" aria-label="Room code">
-          <button id="joinRoomBtn" style="margin-top:8px">Join room</button>
-        </section>
-      </div>
-
-      <div id="roomConnected" style="display:none">
-        <section>
-          <h3>Current room</h3>
-          <div class="roomCodeHero">
-            <div id="currentRoomCode" class="roomCodeValue">—</div>
-            <button id="copyRoomCodeBtn">Copy code</button>
-          </div>
-          <div class="metric" style="margin-top:8px"><b>Your role</b><span id="currentRoomRole">—</span></div>
-          <div class="metric"><b>Host</b><span id="currentRoomHost">—</span></div>
-          <p id="roomHostControlsNote" class="small"></p>
-        </section>
-        <section>
-          <h3>Players</h3>
-          <div id="roomMemberList" class="roomMemberList"></div>
-        </section>
-        <section>
-          <h3>Shared in this preview</h3>
-          <p class="small">Match timer, pause/reset state, question unlock schedule, global question cooldown, question history, search-area constraints, mission state, and Power Charges sync across the room. Markers, live player position, and Hider mission target coordinates stay local.</p>
-          <button id="leaveRoomBtn" class="danger">Leave room</button>
-        </section>
-      </div>
-    </div>
-
     <div id="view-game" class="panelView active">
       <div class="panelHeader"><h2>Game</h2><button class="closePanel">Hide</button></div>
+
+      <div id="roomDisconnected">
+        <section id="roomEntrySection">
+          <h3>Join the game</h3>
+          <div id="roomStatus" class="roomStatus">Initializing room service…</div>
+          <div id="roomSetupNotice" class="roomSetupNotice">Rooms need a Firebase Realtime Database project before they can connect across devices. Follow <b>ROOMS_SETUP.md</b> in the repo, then add the Firebase web config to <b>firebase-config.js</b>.</div>
+          <div class="roomEntryGrid">
+            <label>Display name
+              <input id="roomPlayerName" type="text" maxlength="28" autocomplete="nickname" placeholder="e.g. BananaMan1234">
+            </label>
+            <label>Role
+              <select id="roomRoleSelect"><option value="seeker">Seeker</option><option value="hider">Hider</option></select>
+            </label>
+          </div>
+          <button id="createRoomBtn" class="primary" style="margin-top:9px">Create room</button>
+          <div class="roomOr">OR JOIN</div>
+          <div class="roomJoinRow">
+            <input id="roomJoinCode" class="roomJoinCode" type="text" maxlength="6" autocomplete="off" placeholder="ABC123" aria-label="Room code">
+            <button id="joinRoomBtn">Join room</button>
+          </div>
+          <p class="small" style="margin-bottom:0">One Hider per room for now. Your live position stays local except for intentional gameplay reveals.</p>
+        </section>
+      </div>
 
       <section id="currentActionSection" class="objectiveCard">
         <div class="objectiveEyebrow" id="currentActionEyebrow">CURRENT STATUS</div>
@@ -664,6 +687,7 @@
 
       <section>
         <h3>Current question schedule</h3>
+        <div class="metric"><b>Hiding time</b><span id="ruleHideTime">10:00</span></div>
         <div class="metric"><b>Centerline</b><span id="ruleGridTime">10:00</span></div>
         <div class="metric"><b>Nearest tower</b><span id="ruleNearestTime">20:00</span></div>
         <div class="metric"><b>Tower radius</b><span id="ruleTowerRadiusTime">30:00</span></div>
@@ -678,9 +702,18 @@
       <div class="panelHeader"><h2>Settings</h2><button class="closePanel">Hide</button></div>
 
       <details class="settingsGroup">
-        <summary><span>Question timing</span><span class="settingsHint">Unlock schedule + cooldown</span></summary>
+        <summary><span>Question timing</span><span class="settingsHint">Hide time + unlocks + cooldown</span></summary>
         <div class="settingsBody">
         <div class="presetBox">
+          <strong>Hiding phase</strong>
+          <label>Hiding time (minutes)
+            <input id="hideTimeMinutes" type="number" min="0" step="0.5" value="10">
+          </label>
+          <label class="settingCheck"><input id="firstQuestionOnHideEnd" type="checkbox" checked><span>Unlock the first question when hiding time ends</span></label>
+          <p class="small">While hiding time is active, the Game status card becomes the hiding countdown. With the option above enabled, Centerline unlocks exactly when it reaches zero.</p>
+        </div>
+
+        <div class="presetBox" style="margin-top:9px">
           <strong>Quick schedule builder</strong>
           <div class="scheduleGrid" style="margin-top:9px">
             <label>First question after (min)
@@ -719,6 +752,51 @@
         <button class="primary" id="applyScheduleBtn" style="margin-top:8px">Apply timing settings</button>
         <div id="scheduleValidation" class="validation"></div>
         <div id="scheduleSummary" class="summaryLine"></div>
+        </div>
+      </details>
+
+      <details class="settingsGroup">
+        <summary><span>Question prices</span><span class="settingsHint">Configure Seeker point costs</span></summary>
+        <div class="settingsBody">
+          <div class="priceBlock">
+            <strong>Centerline + nearest</strong>
+            <div class="scheduleGrid">
+              <label>Centerline<input id="costGrid" type="number" min="0" step="1" value="4"></label>
+              <label>Nearest tower<input id="costNearest" type="number" min="0" step="1" value="5"></label>
+              <label>Nearest landmark<input id="costLandmarkNearest" type="number" min="0" step="1" value="6"></label>
+              <label>Marker direction<input id="costMarkerDirection" type="number" min="0" step="1" value="8"></label>
+            </div>
+          </div>
+          <div class="priceBlock">
+            <strong>Tower radius</strong>
+            <div class="scheduleGrid">
+              <label>500+ units<input id="costTower500" type="number" min="0" step="1" value="4"></label>
+              <label>400–499<input id="costTower400" type="number" min="0" step="1" value="5"></label>
+              <label>300–399<input id="costTower300" type="number" min="0" step="1" value="7"></label>
+              <label>250–299<input id="costTower250" type="number" min="0" step="1" value="9"></label>
+            </div>
+          </div>
+          <div class="priceBlock">
+            <strong>Landmark radius</strong>
+            <div class="scheduleGrid">
+              <label>500+ units<input id="costLandmark500" type="number" min="0" step="1" value="4"></label>
+              <label>400–499<input id="costLandmark400" type="number" min="0" step="1" value="5"></label>
+              <label>300–399<input id="costLandmark300" type="number" min="0" step="1" value="6"></label>
+              <label>200–299<input id="costLandmark200" type="number" min="0" step="1" value="8"></label>
+              <label>150–199<input id="costLandmark150" type="number" min="0" step="1" value="10"></label>
+            </div>
+          </div>
+          <div class="priceBlock">
+            <strong>Marker distance</strong>
+            <div class="scheduleGrid">
+              <label>500+ units<input id="costMarker500" type="number" min="0" step="1" value="5"></label>
+              <label>400–499<input id="costMarker400" type="number" min="0" step="1" value="6"></label>
+              <label>300–399<input id="costMarker300" type="number" min="0" step="1" value="8"></label>
+              <label>250–299<input id="costMarker250" type="number" min="0" step="1" value="10"></label>
+            </div>
+          </div>
+          <button class="primary" id="applyQuestionCostsBtn" style="margin-top:8px">Apply question prices</button>
+          <div id="questionCostsValidation" class="validation"></div>
         </div>
       </details>
 
@@ -775,13 +853,6 @@
         </div>
       </details>
 
-      <details class="settingsGroup">
-        <summary><span>Development / testing</span><span class="settingsHint">Testing-only controls</span></summary>
-        <div class="settingsBody">
-        <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>
-        <p class="small">Does not change the match timer.</p>
-        </div>
-      </details>
 
       <details class="settingsGroup">
         <summary><span>Tower data</span><span class="settingsHint">Reference coordinates</span></summary>
@@ -796,11 +867,31 @@
         <div class="towerLegend" id="landmarkLegend"></div>
         </div>
       </details>
+
+      <!-- Keep Development / testing as the final Settings category in future versions. -->
+      <details class="settingsGroup">
+        <summary><span>Development / testing</span><span class="settingsHint">Testing-only controls</span></summary>
+        <div class="settingsBody">
+        <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>
+        <p class="small">Does not change the match timer.</p>
+        </div>
+      </details>
     </div>
 
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.3.0 preview — Room + question cleanup</h4>
+        <ul>
+          <li>Moved room creation/joining onto the default Game page and hides it after joining.</li>
+          <li>Added top-bar Leave Room and a player-count popover; Hiders no longer see the Questions tab.</li>
+          <li>Made question cards denser with larger question names.</li>
+          <li>Added configurable hiding time, optional first-question unlock at hide-time end, and a contextual hiding countdown.</li>
+          <li>Added configurable point prices for every current question type and radius tier.</li>
+          <li>Development / testing is pinned to the bottom of Settings.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.3.0 preview — UI organization pass</h4>
         <ul>
@@ -1025,7 +1116,14 @@ let liveMarker=null, liveLocationEnabled=false, liveLocationTimer=null, liveLoca
 const markerPalette=["#ffffff","#ffca3a","#8ac926","#4cc9f0","#ff595e","#c77dff","#2ec4b6","#f4a261"];
 
 let unlockTimes={grid:600,nearest:1200,towerRadius:1800,landmark:2400,marker:3000};
+let hidingSettings={duration:600,firstQuestionOnEnd:true};
 let questionCooldownSeconds=300;
+let questionCosts={
+  grid:4,nearest:5,landmarkNearest:6,markerDirection:8,
+  tower500:4,tower400:5,tower300:7,tower250:9,
+  landmark500:4,landmark400:5,landmark300:6,landmark200:8,landmark150:10,
+  marker500:5,marker400:6,marker300:8,marker250:10
+};
 let questionCooldownUntil=0;
 let seekerPointsSpent=0;
 const pointsPerMinute=1;
@@ -1253,16 +1351,31 @@ function updateTopRoleBadge(){
   badge.textContent=`${role==="hider"?"HIDER":"SEEKER"} · ${code}`;
   badge.classList.add("connected",role==="hider"?"hider":"seeker");
 }
+function hidingTimeRemaining(){return Math.max(0,Number(hidingSettings.duration||0)-currentMatchSeconds());}
+function updateRoomChrome(){
+  const connected=roomModeConnected(),isHider=connected&&roomRole()==="hider";
+  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]');
+  if(actions)actions.style.display=connected?"flex":"none";
+  if(count)count.textContent=String(document.getElementById("roomMemberList")?.children?.length||0);
+  if(!connected&&popover)popover.classList.remove("open");
+  if(playersBtn)playersBtn.setAttribute("aria-expanded",String(!!popover?.classList.contains("open")));
+  if(qTab)qTab.style.display=isHider?"none":"";
+  if(isHider&&activeTab==="questions")showTab("game");
+}
 function updateGameDashboard(){
   const card=document.getElementById("currentActionSection");if(!card)return;
   const eyebrow=document.getElementById("currentActionEyebrow"),title=document.getElementById("currentActionTitle"),timer=document.getElementById("currentActionTimer"),detail=document.getElementById("currentActionDetail"),next=document.getElementById("currentActionNext"),secondary=document.getElementById("currentActionSecondary");
-  const controls=document.getElementById("matchControlSection"),points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext");
+  const controls=document.getElementById("matchControlSection"),points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext"),relocationSection=document.getElementById("relocationGameSection");
   const connected=roomModeConnected(),role=connected?roomRole():null,isHider=role==="hider",isSeeker=role==="seeker",sec=currentMatchSeconds(),running=connected?roomMatchRunning():matchRunning;
-  controls.style.display=connected&&!window.BigWalkRooms?.isHost?.()?"none":"block";
+  card.style.display=connected?"block":"none";
+  controls.style.display=connected&&!!window.BigWalkRooms?.isHost?.()?"block":"none";
+  if(relocationSection)relocationSection.style.display=connected?"block":"none";
   points.style.display=isSeeker?"block":"none";qSection.style.display=isSeeker?"block":"none";
+  const hideRemaining=Math.max(0,Number(hidingSettings.duration||0)-sec);
   if(isSeeker){
     const anyUnlocked=testingUnlockOverride||Object.values(unlockTimes).some(t=>sec>=Number(t));
-    if(sec<.01&&!running){qStatus.textContent="Waiting";qNext.textContent=`First question unlocks ${formatApproxDuration(unlockTimes.grid)} after the match starts.`;}
+    if(sec<.01&&!running){qStatus.textContent="Waiting";qNext.textContent=hidingSettings.firstQuestionOnEnd?"First question unlocks when hiding time ends.":`First question unlocks ${formatApproxDuration(unlockTimes.grid)} after the match starts.`;}
+    else if(hideRemaining>.01&&hidingSettings.firstQuestionOnEnd&&!testingUnlockOverride){qStatus.textContent="Locked · hiding time";qNext.textContent=`Centerline unlocks when hiding time ends (${formatApproxDuration(hideRemaining)}).`;}
     else if(relocationState.active){qStatus.textContent="Locked";qNext.textContent="Questions are unavailable during forced relocation.";}
     else if(questionCooldownActive()){qStatus.textContent=`Cooling down · ${formatApproxDuration(questionCooldownRemaining())}`;qNext.textContent=nextQuestionUnlockInfo(sec)+".";}
     else{qStatus.textContent=anyUnlocked?"Ready":"Locked";qNext.textContent=nextQuestionUnlockInfo(sec)+".";}
@@ -1272,16 +1385,20 @@ function updateGameDashboard(){
   const relocationNext=Math.max(0,Number(relocationState.nextAt??relocationSettings.firstAt)-sec);
   next.textContent=missionState.active?"Relocation · paused":`Next relocation · ${formatApproxDuration(relocationNext)}`;
   secondary.textContent=isHider?`⚡ ${Math.max(0,Number(hiderPowerCharges||0))} Power Charge${Number(hiderPowerCharges||0)===1?"":"s"}`:isSeeker?`${seekerPointsBalance()} Seeker Point${seekerPointsBalance()===1?"":"s"}`:"—";
-  if(!connected){title.textContent="Join a room";detail.textContent="Create or join a shared room to start a multiplayer match.";next.textContent="No active match";secondary.textContent="—";return;}
+  if(!connected)return;
   if(sec<.01&&!running){title.textContent="Ready to play";detail.textContent=window.BigWalkRooms?.isHost?.()?"Start the match when everyone is ready.":"Waiting for the room host to start the match.";next.textContent="Match not started";return;}
   if(!running){title.textContent="Match paused";detail.textContent="Gameplay timers are paused.";next.textContent="Waiting to resume";return;}
+  if(hideRemaining>.01){
+    eyebrow.textContent="HIDING PHASE";title.textContent=isHider?"Find your hiding spot":"Give the Hider time";timer.style.display="block";timer.textContent=formatTime(hideRemaining);
+    detail.textContent=isHider?"Get into position before hiding time ends.":"Searching begins when the hiding timer reaches zero.";
+    next.textContent=hidingSettings.firstQuestionOnEnd?"First question · at hide end":"First question · separate schedule";return;
+  }
   if(relocationState.active){
     card.classList.add("urgent");eyebrow.textContent="CURRENT OBJECTIVE";
     const rem=Math.max(0,Number(relocationState.deadline||sec)-sec);timer.style.display="block";timer.textContent=rem>0?formatTime(rem):"OVERTIME";
     title.textContent=isHider?"Forced relocation":"Hider relocating";
-    if(isHider&&localRelocationPlan&&!localRelocationPlan.invalid&&!localRelocationPlan.skip&&liveMarker){
-      const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);detail.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)} units from relocation start.`;
-    }else detail.textContent=isHider?"Move to a legal new hiding area and press Ready when the target is met.":"Questions are locked until the Hider finishes relocating.";
+    if(isHider&&localRelocationPlan&&!localRelocationPlan.invalid&&!localRelocationPlan.skip&&liveMarker){const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);detail.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)} units from relocation start.`;}
+    else detail.textContent=isHider?"Move to a legal new hiding area and press Ready when the target is met.":"Questions are locked until the Hider finishes relocating.";
     next.textContent=rem>0?"Target window active":"Overtime penalty active";return;
   }
   if(missionState.active){
@@ -1298,32 +1415,32 @@ function seekerPointsEarned(){return Math.floor(currentMatchSeconds()/60)*points
 function seekerPointsBalance(){return Math.max(0,seekerPointsEarned()-seekerPointsSpent);}
 function towerRadiusCost(radius){
   radius=Number(radius);
-  if(radius>=500)return 4;
-  if(radius>=400)return 5;
-  if(radius>=300)return 7;
-  return 9;
+  if(radius>=500)return questionCosts.tower500;
+  if(radius>=400)return questionCosts.tower400;
+  if(radius>=300)return questionCosts.tower300;
+  return questionCosts.tower250;
 }
 function landmarkRadiusCost(radius){
   radius=Number(radius);
-  if(radius>=500)return 4;
-  if(radius>=400)return 5;
-  if(radius>=300)return 6;
-  if(radius>=200)return 8;
-  return 10;
+  if(radius>=500)return questionCosts.landmark500;
+  if(radius>=400)return questionCosts.landmark400;
+  if(radius>=300)return questionCosts.landmark300;
+  if(radius>=200)return questionCosts.landmark200;
+  return questionCosts.landmark150;
 }
 function markerRadiusCost(radius){
   radius=Number(radius);
-  if(radius>=500)return 5;
-  if(radius>=400)return 6;
-  if(radius>=300)return 8;
-  return 10;
+  if(radius>=500)return questionCosts.marker500;
+  if(radius>=400)return questionCosts.marker400;
+  if(radius>=300)return questionCosts.marker300;
+  return questionCosts.marker250;
 }
 function questionCostFor(key){
-  if(key==="grid")return 4;
-  if(key==="nearest")return 5;
+  if(key==="grid")return Number(questionCosts.grid||0);
+  if(key==="nearest")return Number(questionCosts.nearest||0);
   if(key==="towerRadius")return towerRadiusCost(document.getElementById("radarRadius").value);
-  if(key==="landmark")return document.getElementById("landmarkQuestionType").value==="nearest"?6:landmarkRadiusCost(document.getElementById("landmarkRadius").value);
-  if(key==="marker")return document.getElementById("markerQuestionType").value==="direction"?8:markerRadiusCost(document.getElementById("markerRadius").value);
+  if(key==="landmark")return document.getElementById("landmarkQuestionType").value==="nearest"?Number(questionCosts.landmarkNearest||0):landmarkRadiusCost(document.getElementById("landmarkRadius").value);
+  if(key==="marker")return document.getElementById("markerQuestionType").value==="direction"?Number(questionCosts.markerDirection||0):markerRadiusCost(document.getElementById("markerRadius").value);
   return 0;
 }
 function setQuestionPointMessage(text,warning=false){
@@ -1764,6 +1881,7 @@ function updateRelocationUi(){
 }
 
 function showTab(name){
+  if(name==="questions"&&isRoomHider())name="game";
   activeTab=name;
   panelVisible=true;
   panel.style.display="block";
@@ -1809,7 +1927,7 @@ function syncMatchControlButtons(){
 }
 window.BigWalkRoomBridge={
   getSharedGameState(){
-    return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},questionCooldownSeconds:Number(questionCooldownSeconds||300),seekerPointsSpent:Number(seekerPointsSpent||0),relocationSettings:{...relocationSettings},relocationState:{...relocationState},missionSettings:{...missionSettings},missionState:{...missionState},hiderPowerCharges:Number(hiderPowerCharges||0)};
+    return {constraints:JSON.parse(JSON.stringify(constraints||[])),historyText:[...(historyText||[])],questionCooldownUntil:Number(questionCooldownUntil||0),unlockTimes:{...unlockTimes},hidingSettings:{...hidingSettings},questionCooldownSeconds:Number(questionCooldownSeconds||300),questionCosts:{...questionCosts},seekerPointsSpent:Number(seekerPointsSpent||0),relocationSettings:{...relocationSettings},relocationState:{...relocationState},missionSettings:{...missionSettings},missionState:{...missionState},hiderPowerCharges:Number(hiderPowerCharges||0)};
   },
   applySharedRoomState(state){
     roomApplyingRemoteState=true;
@@ -1821,7 +1939,9 @@ window.BigWalkRoomBridge={
       if(game.unlockTimes && typeof game.unlockTimes==="object"){
         unlockTimes={grid:Number(game.unlockTimes.grid??unlockTimes.grid),nearest:Number(game.unlockTimes.nearest??unlockTimes.nearest),towerRadius:Number(game.unlockTimes.towerRadius??unlockTimes.towerRadius),landmark:Number(game.unlockTimes.landmark??unlockTimes.landmark),marker:Number(game.unlockTimes.marker??unlockTimes.marker)};
       }
+      if(game.hidingSettings&&typeof game.hidingSettings==="object")hidingSettings={duration:Math.max(0,Number(game.hidingSettings.duration??hidingSettings.duration)),firstQuestionOnEnd:game.hidingSettings.firstQuestionOnEnd!==false};
       if(Number.isFinite(Number(game.questionCooldownSeconds))&&Number(game.questionCooldownSeconds)>0)questionCooldownSeconds=Number(game.questionCooldownSeconds);
+      if(game.questionCosts&&typeof game.questionCosts==="object")questionCosts={...questionCosts,...game.questionCosts};
       seekerPointsSpent=Math.max(0,Number(game.seekerPointsSpent||0));
       if(game.relocationSettings&&typeof game.relocationSettings==="object")relocationSettings={...relocationSettings,...game.relocationSettings};
       if(game.relocationState&&typeof game.relocationState==="object"){
@@ -1838,7 +1958,7 @@ window.BigWalkRoomBridge={
       hiderPowerCharges=Math.max(0,Number(game.hiderPowerCharges||0));
       const match=state?.match;
       if(match){matchRunning=!!match.running;matchElapsedMs=Math.max(0,Number(match.elapsedMs||0));matchLastTick=null;}
-      updateScheduleInputs();updateRelocationSettingsInputs();renderMatchTimer();syncMatchControlButtons();
+      updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();renderMatchTimer();syncMatchControlButtons();
       if(appInitialized)draw();
     }finally{roomApplyingRemoteState=false;}
   },
@@ -1967,6 +2087,7 @@ function updateMilestones(){
   }
 }
 function updateRuleTimes(){
+  document.getElementById("ruleHideTime").textContent=formatTime(hidingSettings.duration);
   document.getElementById("ruleGridTime").textContent=formatTime(unlockTimes.grid);
   document.getElementById("ruleNearestTime").textContent=formatTime(unlockTimes.nearest);
   document.getElementById("ruleTowerRadiusTime").textContent=formatTime(unlockTimes.towerRadius);
@@ -1978,29 +2099,43 @@ function updateRelocationSettingsInputs(){
   const ids={relocationFirstMinutes:relocationSettings.firstAt/60,relocationIntervalMinutes:relocationSettings.interval/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
   for(const [id,value] of Object.entries(ids)){const el=document.getElementById(id);if(el)el.value=value;}
 }
+function syncHideTimeControls(){
+  const hide=document.getElementById("hideTimeMinutes"),linked=document.getElementById("firstQuestionOnHideEnd"),first=document.getElementById("firstUnlockMinutes"),grid=document.getElementById("gridUnlockMinutes");
+  if(!hide||!linked||!first||!grid)return;
+  first.disabled=!!linked.checked;grid.disabled=!!linked.checked;
+  if(linked.checked){first.value=hide.value;grid.value=hide.value;}
+}
 function updateScheduleInputs(){
+  document.getElementById("hideTimeMinutes").value=hidingSettings.duration/60;
+  document.getElementById("firstQuestionOnHideEnd").checked=hidingSettings.firstQuestionOnEnd!==false;
+  document.getElementById("firstUnlockMinutes").value=unlockTimes.grid/60;
   document.getElementById("gridUnlockMinutes").value=unlockTimes.grid/60;
   document.getElementById("nearestUnlockMinutes").value=unlockTimes.nearest/60;
   document.getElementById("towerRadiusUnlockMinutes").value=unlockTimes.towerRadius/60;
   document.getElementById("landmarkUnlockMinutes").value=unlockTimes.landmark/60;
   document.getElementById("markerUnlockMinutes").value=unlockTimes.marker/60;
   document.getElementById("questionCooldownMinutes").value=questionCooldownSeconds/60;
-  document.getElementById("scheduleSummary").textContent=
-    `Unlocks: ${formatTime(unlockTimes.grid)} → ${formatTime(unlockTimes.nearest)} → ${formatTime(unlockTimes.towerRadius)} → ${formatTime(unlockTimes.landmark)} → ${formatTime(unlockTimes.marker)} · Cooldown: ${formatTime(questionCooldownSeconds)}`;
+  syncHideTimeControls();
+  document.getElementById("scheduleSummary").textContent=`Hiding: ${formatTime(hidingSettings.duration)} · Unlocks: ${formatTime(unlockTimes.grid)} → ${formatTime(unlockTimes.nearest)} → ${formatTime(unlockTimes.towerRadius)} → ${formatTime(unlockTimes.landmark)} → ${formatTime(unlockTimes.marker)} · Cooldown: ${formatTime(questionCooldownSeconds)}`;
+}
+function updateQuestionCostInputs(){
+  const ids={costGrid:"grid",costNearest:"nearest",costLandmarkNearest:"landmarkNearest",costMarkerDirection:"markerDirection",costTower500:"tower500",costTower400:"tower400",costTower300:"tower300",costTower250:"tower250",costLandmark500:"landmark500",costLandmark400:"landmark400",costLandmark300:"landmark300",costLandmark200:"landmark200",costLandmark150:"landmark150",costMarker500:"marker500",costMarker400:"marker400",costMarker300:"marker300",costMarker250:"marker250"};
+  for(const [id,key] of Object.entries(ids)){const el=document.getElementById(id);if(el)el.value=String(questionCosts[key]);}
 }
 function renderMatchTimer(){
   const time=formatTime(currentMatchSeconds());
   document.getElementById("matchTimer").textContent=time;
   document.getElementById("topTimerClock").textContent=time;
   updateLocalRelocation();updateRelocationUi();updateLocalHiderMission();updateMissionUi();
-  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();
+  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();updateRoomChrome();
 
   const status=document.getElementById("timerStatus"),topSub=document.getElementById("topTimerSub");
   if(testingUnlockOverride){status.textContent="Testing override active — all questions unlocked.";topSub.textContent="Testing override";return;}
   if(!matchRunning&&currentMatchSeconds()<.01){status.textContent="Start the match when everyone is ready.";topSub.textContent="Match not started";return;}
   if(!matchRunning){status.textContent="Match paused.";topSub.textContent="Paused";return;}
   status.textContent="Match running.";
-  if(roomModeConnected()&&relocationState.active)topSub.textContent="Forced relocation active";
+  if(hidingTimeRemaining()>.01)topSub.textContent="Hiding time";
+  else if(roomModeConnected()&&relocationState.active)topSub.textContent="Forced relocation active";
   else if(roomModeConnected()&&missionState.active)topSub.textContent="Hider mission active";
   else if(questionCooldownActive())topSub.textContent="Questions cooling down";
   else topSub.textContent="Questions ready";
@@ -2455,6 +2590,16 @@ document.querySelectorAll(".tabBtn").forEach(btn=>btn.onclick=()=>{
   showTab(btn.dataset.tab);
 });
 document.querySelectorAll("[data-open-view]").forEach(btn=>btn.onclick=()=>showTab(btn.dataset.openView));
+const roomPlayersBtn=document.getElementById("roomPlayersBtn"),roomPlayersPopover=document.getElementById("roomConnected");
+roomPlayersBtn.onclick=e=>{
+  e.stopPropagation();
+  if(!roomModeConnected())return;
+  const open=!roomPlayersPopover.classList.contains("open");
+  roomPlayersPopover.classList.toggle("open",open);
+  roomPlayersBtn.setAttribute("aria-expanded",String(open));
+};
+roomPlayersPopover.addEventListener("click",e=>e.stopPropagation());
+document.addEventListener("click",()=>{roomPlayersPopover.classList.remove("open");roomPlayersBtn.setAttribute("aria-expanded","false");});
 document.querySelectorAll(".closePanel").forEach(btn=>btn.onclick=hidePanel);
 
 // Keep toolbar pointer events from being captured by the map pane.
@@ -2641,40 +2786,47 @@ document.getElementById("applyMarkerQuestion").onclick=()=>{
   }
 };
 
+document.getElementById("hideTimeMinutes").addEventListener("input",syncHideTimeControls);
+document.getElementById("firstQuestionOnHideEnd").addEventListener("change",syncHideTimeControls);
 document.getElementById("buildScheduleBtn").onclick=()=>{
-  const first=+document.getElementById("firstUnlockMinutes").value;
+  const linked=document.getElementById("firstQuestionOnHideEnd").checked;
+  const hide=+document.getElementById("hideTimeMinutes").value;
+  const requestedFirst=+document.getElementById("firstUnlockMinutes").value;
+  const first=linked?hide:requestedFirst;
   const interval=+document.getElementById("unlockIntervalMinutes").value;
   const v=document.getElementById("scheduleValidation");v.textContent="";
-  if(!Number.isFinite(first)||first<0||!Number.isFinite(interval)||interval<=0){
-    v.textContent="Use a first unlock of 0 minutes or more and an interval greater than 0.";return;
-  }
+  if(!Number.isFinite(hide)||hide<0||!Number.isFinite(first)||first<0||!Number.isFinite(interval)||interval<=0){v.textContent="Use a hiding time / first unlock of 0 minutes or more and an interval greater than 0.";return;}
   const vals=[first,first+interval,first+2*interval,first+3*interval,first+4*interval];
   ["gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes"].forEach((id,i)=>document.getElementById(id).value=vals[i]);
-  document.getElementById("scheduleSummary").textContent=`Preview: ${vals.map(m=>formatTime(m*60)).join(" → ")}`;
+  document.getElementById("scheduleSummary").textContent=`Preview: hiding ${formatTime(hide*60)} · questions ${vals.map(m=>formatTime(m*60)).join(" → ")}`;
 };
 document.getElementById("applyScheduleBtn").onclick=()=>{
   if(!roomCanEditSharedGame()){document.getElementById("scheduleValidation").textContent="Shared room: only seekers (or the host) can change match timing.";return;}
+  const linked=document.getElementById("firstQuestionOnHideEnd").checked;
+  const hideMinutes=+document.getElementById("hideTimeMinutes").value;
   const ids=["gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes"];
   const vals=ids.map(id=>+document.getElementById(id).value);
+  if(linked)vals[0]=hideMinutes;
   const cooldownMinutes=+document.getElementById("questionCooldownMinutes").value;
   const v=document.getElementById("scheduleValidation");v.textContent="";
-
-  if(vals.some(x=>!Number.isFinite(x)||x<0)){
-    v.textContent="Unlock times must be 0 minutes or greater.";return;
-  }
-  if(!(vals[0]<=vals[1]&&vals[1]<=vals[2]&&vals[2]<=vals[3]&&vals[3]<=vals[4])){
-    v.textContent="Unlock times must stay in order: Centerline ≤ Nearest Tower ≤ Tower Radius ≤ Landmark Questions ≤ Marker Questions.";return;
-  }
-  if(!Number.isFinite(cooldownMinutes)||cooldownMinutes<=0){
-    v.textContent="Question cooldown must be greater than 0 minutes.";return;
-  }
-
+  if(!Number.isFinite(hideMinutes)||hideMinutes<0){v.textContent="Hiding time must be 0 minutes or greater.";return;}
+  if(vals.some(x=>!Number.isFinite(x)||x<0)){v.textContent="Unlock times must be 0 minutes or greater.";return;}
+  if(!(vals[0]<=vals[1]&&vals[1]<=vals[2]&&vals[2]<=vals[3]&&vals[3]<=vals[4])){v.textContent="Unlock times must stay in order: Centerline ≤ Nearest Tower ≤ Tower Radius ≤ Landmark Questions ≤ Marker Questions.";return;}
+  if(!Number.isFinite(cooldownMinutes)||cooldownMinutes<=0){v.textContent="Question cooldown must be greater than 0 minutes.";return;}
+  hidingSettings={duration:hideMinutes*60,firstQuestionOnEnd:linked};
   unlockTimes={grid:vals[0]*60,nearest:vals[1]*60,towerRadius:vals[2]*60,landmark:vals[3]*60,marker:vals[4]*60};
   questionCooldownSeconds=cooldownMinutes*60;
-  updateScheduleInputs();renderMatchTimer();
-  notifyRoomGameStateChanged();
-  v.style.color="#9ef1c2";v.textContent="Timing settings applied.";
-  setTimeout(()=>{v.textContent="";v.style.color="";},1500);
+  updateScheduleInputs();renderMatchTimer();notifyRoomGameStateChanged();
+  v.style.color="#9ef1c2";v.textContent="Timing settings applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
+};
+document.getElementById("applyQuestionCostsBtn").onclick=()=>{
+  const v=document.getElementById("questionCostsValidation");v.textContent="";
+  if(roomModeConnected()&&!window.BigWalkRooms?.isHost?.()){v.textContent="Only the room host can change question prices.";return;}
+  const ids={costGrid:"grid",costNearest:"nearest",costLandmarkNearest:"landmarkNearest",costMarkerDirection:"markerDirection",costTower500:"tower500",costTower400:"tower400",costTower300:"tower300",costTower250:"tower250",costLandmark500:"landmark500",costLandmark400:"landmark400",costLandmark300:"landmark300",costLandmark200:"landmark200",costLandmark150:"landmark150",costMarker500:"marker500",costMarker400:"marker400",costMarker300:"marker300",costMarker250:"marker250"};
+  const nextCosts={};
+  for(const [id,key] of Object.entries(ids)){const value=+document.getElementById(id).value;if(!Number.isFinite(value)||value<0||!Number.isInteger(value)){v.textContent="Question prices must be whole numbers of 0 points or more.";return;}nextCosts[key]=value;}
+  questionCosts=nextCosts;updateQuestionCostInputs();updateQuestionEconomy();notifyRoomGameStateChanged();
+  v.style.color="#9ef1c2";v.textContent="Question prices applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
 const soundEnabledEl=document.getElementById("soundEnabled"),soundVolumeEl=document.getElementById("soundVolume"),soundVolumeValueEl=document.getElementById("soundVolumeValue");
@@ -2798,7 +2950,7 @@ function initializeMapApp(){
   if(appInitialized || !img.naturalWidth || !img.naturalHeight)return;
   appInitialized=true;
   canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
-  populate();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();
+  populate();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();
   setToolMode("pan");renderMatchTimer();startTimerLoop();draw();fitMap();
   checkForSiteUpdate();
   setInterval(checkForSiteUpdate,300000);
