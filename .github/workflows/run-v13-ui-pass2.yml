@@ -1,0 +1,102 @@
+name: Run v1.3 UI organization pass 2
+
+on:
+  push:
+    branches: [v1.3.0-hider]
+    paths:
+      - '.github/workflows/run-v13-ui-pass2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1.3.0-hider
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Apply UI pass
+        run: python3 .github/scripts/apply-v13-ui-pass2.py
+
+      - name: Validate source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text(encoding='utf-8')
+          checks=[
+            'placeholder="e.g. BananaMan1234"',
+            'id="roomPlayersBtn"',
+            'id="roomPlayerCount"',
+            'id="roomDisconnected"',
+            'id="hideTimeMinutes"',
+            'id="firstQuestionOnHideEnd"',
+            'id="applyQuestionCostsBtn"',
+            'let hidingSettings={duration:600,firstQuestionOnEnd:true};',
+            'let questionCosts={',
+            'function updateRoomChrome()',
+            'if(name==="questions"&&isRoomHider())name="game";',
+            'Keep Development / testing as the final Settings category',
+            'HIDING PHASE',
+          ]
+          for c in checks:
+            assert c in s,c
+          assert 'data-open-view="room"' not in s
+          assert 'id="view-room"' not in s
+          ids=re.findall(r'\bid="([^"]+)"',s)
+          dupes=sorted({x for x in ids if ids.count(x)>1})
+          assert not dupes, f'duplicate ids: {dupes}'
+          settings=s[s.index('id="view-settings"'):s.index('id="view-changelog"')]
+          assert settings.rfind('Development / testing') > settings.rfind('Landmark data')
+          start=s.index('<script>')+len('<script>')
+          end=s.index('</script>',start)
+          Path('/tmp/app.js').write_text(s[start:end],encoding='utf-8')
+          PY
+          node --check /tmp/app.js
+          node --check rooms.js
+          git diff --check
+
+      - name: Commit v1.3 source
+        run: |
+          git add index.html
+          git commit -m "Refine v1.3 rooms and question UI"
+          git push origin v1.3.0-hider
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Publish isolated preview
+        run: |
+          git checkout main
+          git pull --ff-only origin main
+          git show "$SOURCE_SHA:index.html" > v1.3-preview/index.html
+          git show "$SOURCE_SHA:rooms.js" > v1.3-preview/rooms.js
+          git show "$SOURCE_SHA:firebase-config.js" > v1.3-preview/firebase-config.js
+          git show "$SOURCE_SHA:version.json" > v1.3-preview/version.json
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('v1.3-preview/index.html')
+          s=p.read_text(encoding='utf-8')
+          if s.count('src="big-walk-map.png"')!=1:
+              raise SystemExit('unexpected preview map path count')
+          s=s.replace('src="big-walk-map.png"','src="../big-walk-map.png"',1)
+          p.write_text(s,encoding='utf-8')
+          assert 'placeholder="e.g. BananaMan1234"' in s
+          assert 'id="hideTimeMinutes"' in s
+          assert 'id="applyQuestionCostsBtn"' in s
+          start=s.index('<script>')+len('<script>')
+          end=s.index('</script>',start)
+          Path('/tmp/preview.js').write_text(s[start:end],encoding='utf-8')
+          PY
+          node --check /tmp/preview.js
+          node --check v1.3-preview/rooms.js
+          git diff --check
+          git add v1.3-preview
+          git commit -m "Publish v1.3 room and question UI preview"
+          git push origin main
