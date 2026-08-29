@@ -11,7 +11,7 @@ if not defined PROFILE (
 )
 
 set "COREURL=%~1"
-if not defined COREURL set "COREURL=https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Core.dll"
+if not defined COREURL set "COREURL=https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Core.gz.b64"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
@@ -36,20 +36,29 @@ copy /Y "core\bin\Release\net6.0\BigWalkHideSeek.Core.dll" "%OUT%\BigWalkHideSee
 for /f "tokens=*" %%H in ('powershell -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '%OUT%\BigWalkHideSeek.Core.dll').Hash.ToLower()"') do set "HASH=%%H"
 for /f "tokens=*" %%V in ('powershell -NoProfile -Command "[System.Diagnostics.FileVersionInfo]::GetVersionInfo('%OUT%\BigWalkHideSeek.Core.dll').FileVersion"') do set "VERSION=%%V"
 
+powershell -NoProfile -Command "$src=[IO.File]::ReadAllBytes('%OUT%\BigWalkHideSeek.Core.dll'); $ms=New-Object IO.MemoryStream; $gz=New-Object IO.Compression.GZipStream($ms,[IO.Compression.CompressionMode]::Compress,$true); $gz.Write($src,0,$src.Length); $gz.Dispose(); [IO.File]::WriteAllText('%OUT%\BigWalkHideSeek.Core.gz.b64',[Convert]::ToBase64String($ms.ToArray())); $ms.Dispose()"
+if errorlevel 1 (
+  echo ERROR: Could not create gzip/base64 update payload.
+  pause
+  exit /b 1
+)
+
 >"%OUT%\latest.json" echo {
 >>"%OUT%\latest.json" echo   "version": "%VERSION%",
 >>"%OUT%\latest.json" echo   "url": "%COREURL%",
->>"%OUT%\latest.json" echo   "sha256": "%HASH%"
+>>"%OUT%\latest.json" echo   "sha256": "%HASH%",
+>>"%OUT%\latest.json" echo   "encoding": "gzip-base64"
 >>"%OUT%\latest.json" echo }
 
 echo.
 echo Update package prepared:
 echo   %OUT%\BigWalkHideSeek.Core.dll
+echo   %OUT%\BigWalkHideSeek.Core.gz.b64
 echo   %OUT%\latest.json
 echo.
 echo Version: %VERSION%
 echo SHA-256: %HASH%
 echo.
-echo Send the Core DLL to ChatGPT to publish it to the update feed.
+echo Upload BigWalkHideSeek.Core.gz.b64 here to publish the update.
 echo.
 pause
