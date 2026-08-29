@@ -1,4 +1,5 @@
 name: v1.3 mission reset cue pass
+# retry after reset guard correction
 on:
   push:
     branches: [v1.3.0-hider]
