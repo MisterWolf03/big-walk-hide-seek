@@ -239,7 +239,7 @@
   #roomPlayersBtn{display:flex;align-items:center;gap:6px}
   #roomPlayersBtn svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
   #roomPlayerCount{font-size:12px;font-weight:900}
-  #topLeaveRoomBtn{background:#3b2226;border-color:#6d3438}
+  #leaveRoomBtn{background:#3b2226;border-color:#6d3438}
   #roomConnected{display:none!important;position:fixed;top:52px;right:14px;width:min(320px,calc(100vw - 28px));z-index:90;padding:10px;background:rgba(23,28,35,.99);border:1px solid #465362;border-radius:12px;box-shadow:var(--shadow)}
   #roomConnected.open{display:block!important}
   #roomConnected h3{font-size:13px;margin:0 0 8px}
@@ -289,7 +289,7 @@
     .tabBtn{padding:7px 9px}
     #topTimerSub{display:none}
     #roomConnected{right:8px;top:52px}
-    #topLeaveRoomBtn{font-size:11px;padding:6px 7px}
+    #leaveRoomBtn{font-size:11px;padding:6px 7px}
     #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
     .mapToolBtn{width:40px;height:40px;min-width:40px}
     #waypointNamePopover{left:50px;width:170px}
@@ -1667,7 +1667,7 @@ function updateLocalHiderMission(){
   if(pointInMissionTarget(liveMarker,plan))signalMissionResult("completed");
 }
 async function maybeHostAdvanceMission(){
-  if(!roomModeConnected()||!roomCanDriveMission()||missionMutationBusy||!roomMatchRunning())return;
+  if(!roomModeConnected()||!roomCanDriveMission()||missionMutationBusy||!roomMatchRunning()||hidingTimeRemaining()>.01)return;
   const now=currentMatchSeconds();
   if(missionState.active){
     if(!window.BigWalkRooms?.hasHider?.()){
@@ -1787,7 +1787,7 @@ function updateLocalRelocation(){
   const plan=localRelocationPlan;if(!plan||plan.invalid||plan.skip)return;
 }
 async function maybeHostAdvanceRelocation(){
-  if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning())return;
+  if(!roomModeConnected()||!roomCanDriveRelocation()||relocationMutationBusy||!roomMatchRunning()||hidingTimeRemaining()>.01)return;
   if(missionState.active&&!relocationState.active)return;
   const now=currentMatchSeconds();
   if(relocationState.active){
