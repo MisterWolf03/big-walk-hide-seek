@@ -1247,7 +1247,7 @@ function nextQuestionUnlockInfo(sec=currentMatchSeconds()){
 }
 function updateTopRoleBadge(){
   const badge=document.getElementById("roomTopStatus");if(!badge)return;
-  badge.classList.remove("hider","seeker");
+  badge.classList.remove("connected","hider","seeker");
   if(!roomModeConnected()){badge.textContent="OFFLINE";return;}
   const role=roomRole(),code=window.BigWalkRooms?.getRoomCode?.()||"ROOM";
   badge.textContent=`${role==="hider"?"HIDER":"SEEKER"} · ${code}`;
@@ -1260,6 +1260,13 @@ function updateGameDashboard(){
   const connected=roomModeConnected(),role=connected?roomRole():null,isHider=role==="hider",isSeeker=role==="seeker",sec=currentMatchSeconds(),running=connected?roomMatchRunning():matchRunning;
   controls.style.display=connected&&!window.BigWalkRooms?.isHost?.()?"none":"block";
   points.style.display=isSeeker?"block":"none";qSection.style.display=isSeeker?"block":"none";
+  if(isSeeker){
+    const anyUnlocked=testingUnlockOverride||Object.values(unlockTimes).some(t=>sec>=Number(t));
+    if(sec<.01&&!running){qStatus.textContent="Waiting";qNext.textContent=`First question unlocks ${formatApproxDuration(unlockTimes.grid)} after the match starts.`;}
+    else if(relocationState.active){qStatus.textContent="Locked";qNext.textContent="Questions are unavailable during forced relocation.";}
+    else if(questionCooldownActive()){qStatus.textContent=`Cooling down · ${formatApproxDuration(questionCooldownRemaining())}`;qNext.textContent=nextQuestionUnlockInfo(sec)+".";}
+    else{qStatus.textContent=anyUnlocked?"Ready":"Locked";qNext.textContent=nextQuestionUnlockInfo(sec)+".";}
+  }
   card.classList.remove("hider","seeker","urgent");if(isHider)card.classList.add("hider");if(isSeeker)card.classList.add("seeker");
   timer.style.display="none";eyebrow.textContent="CURRENT STATUS";
   const relocationNext=Math.max(0,Number(relocationState.nextAt??relocationSettings.firstAt)-sec);
@@ -1286,12 +1293,6 @@ function updateGameDashboard(){
   if(isHider&&missionState.available){eyebrow.textContent="OPTIONAL OBJECTIVE";title.textContent="Mission available";detail.textContent="Cross the Zone is ready whenever you want to take it.";return;}
   title.textContent=isHider?"Stay hidden":"Search for the Hider";
   detail.textContent=isHider?"No movement objective is active. Stay put unless you choose a mission.":questionCooldownActive()?"An unlocked question is cooling down.":"Use the map and spend points on available questions.";
-  if(isSeeker){
-    if(relocationState.active)qStatus.textContent="Locked";
-    else if(questionCooldownActive())qStatus.textContent=`Cooling down · ${formatApproxDuration(questionCooldownRemaining())}`;
-    else qStatus.textContent="Ready";
-    qNext.textContent=nextQuestionUnlockInfo(sec)+".";
-  }
 }
 function seekerPointsEarned(){return Math.floor(currentMatchSeconds()/60)*pointsPerMinute;}
 function seekerPointsBalance(){return Math.max(0,seekerPointsEarned()-seekerPointsSpent);}
