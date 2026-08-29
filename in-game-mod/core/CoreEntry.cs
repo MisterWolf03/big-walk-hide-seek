@@ -11,7 +11,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.6 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.7 configured.");
     }
 }
 
@@ -147,13 +147,13 @@ public class HideSeekOverlay : MonoBehaviour
 
         GUILayout.Label("BIG WALK HIDE + SEEK", titleStyle);
         GUILayout.Space(6f);
-        GUILayout.Label("AUTO-UPDATE CORE TEST · v0.0.6", subtitleStyle);
+        GUILayout.Label("AUTO-UPDATE SUCCESS · v0.0.7", subtitleStyle);
         GUILayout.Space(32f);
 
-        GUILayout.Label("Loader → Core architecture is running.", bodyStyle);
+        GUILayout.Label("The Loader updated Core automatically.", bodyStyle);
         GUILayout.Space(12f);
         GUILayout.Label(
-            "If this screen behaves exactly like the previous working build, the permanent Loader successfully loaded the separately updateable Core. Future map and game features will live in Core.",
+            "If you reached this screen without manually replacing the installed Core DLL, the update pipeline is working. Future map, mission, and UI builds can be delivered through the same channel.",
             bodyStyle
         );
 
