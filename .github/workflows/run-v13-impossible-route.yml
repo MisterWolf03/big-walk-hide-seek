@@ -18,6 +18,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Fix temporary patch anchor
+        run: python3 .github/scripts/fix-v13-impossible-route-script.py
       - name: Apply impossible-route patch
         run: python3 .github/scripts/apply-v13-impossible-route.py
       - name: Validate source
