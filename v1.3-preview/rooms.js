@@ -1,5 +1,5 @@
 const FIREBASE_SDK_VERSION = "12.17.1";
-const ROOMS_BUILD_ID = "v13-private-relocation-20260829a";
+const ROOMS_BUILD_ID = "v13-mission-role-ui-20260829a";
 const SESSION_KEY = "bigwalk.room.session.v1";
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ROOM_CODE_LENGTH = 6;
@@ -66,9 +66,12 @@ function setStatus(text, kind=""){
 }
 function setBusy(value){
   busy = value;
-  [ui.createBtn, ui.joinBtn, ui.leaveBtn].filter(Boolean).forEach(btn => btn.disabled = value);
+  [ui.createBtn, ui.joinBtn, ui.leaveBtn, ui.changeRoleBtn].filter(Boolean).forEach(btn => btn.disabled = value);
 }
 function roleLabel(role){ return role === "hider" ? "Hider" : "Seeker"; }
+function effectiveMemberRole(member){
+  return member?.roleView === "hider" || member?.roleView === "seeker" ? member.roleView : member?.role;
+}
 
 function updateRoomUi(){
   if(!ui.disconnected || !ui.connected) return;
@@ -107,8 +110,9 @@ function updateRoomUi(){
     const badges = document.createElement("div");
     badges.className = "roomMemberBadges";
     const role = document.createElement("span");
-    role.className = `roomBadge ${m?.role === "hider" ? "hider" : "seeker"}`;
-    role.textContent = roleLabel(m?.role);
+    const effectiveRole=effectiveMemberRole(m);
+    role.className = `roomBadge ${effectiveRole === "hider" ? "hider" : "seeker"}`;
+    role.textContent = roleLabel(effectiveRole);
     badges.appendChild(role);
     if(uid === roomData?.meta?.hostUid){
       const host = document.createElement("span");
@@ -127,6 +131,7 @@ function updateRoomUi(){
     ui.memberList.appendChild(row);
   }
 
+  if(ui.roleSwitchInput)ui.roleSwitchInput.value=roomRole;
   ui.hostControlsNote.textContent = isHost()
     ? "You control the shared match timer."
     : "Only the room host can start, pause, or reset the shared match timer.";
@@ -137,7 +142,7 @@ function updateRoomUi(){
 
 function memberName(uid){ return roomData?.members?.[uid]?.name || null; }
 function hiderMemberEntry(){
-  return Object.entries(roomData?.members || {}).find(([,m]) => m?.role === "hider") || null;
+  return Object.entries(roomData?.members || {}).find(([,m]) => effectiveMemberRole(m) === "hider") || null;
 }
 function hasHider(){ return !!hiderMemberEntry(); }
 function getHiderRelocationSignal(){
@@ -292,7 +297,7 @@ async function roomHasOtherHider(code){
   const {dbMod} = firebase;
   const snap = await dbMod.get(dbMod.ref(db, `rooms/${code}/members`));
   const members = snap.val() || {};
-  return Object.entries(members).some(([uid, member]) => uid !== user?.uid && member?.role === "hider");
+  return Object.entries(members).some(([uid, member]) => uid !== user?.uid && effectiveMemberRole(member) === "hider");
 }
 
 async function createRoom(){
@@ -365,7 +370,16 @@ async function connectToRoom(code, name, role, created){
 
   const memberRef = dbMod.ref(db, `rooms/${code}/members/${user.uid}`);
   if(!created){
-    await dbMod.update(memberRef, {name,role,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
+    const existingSnap=await dbMod.get(memberRef);
+    if(existingSnap.exists()){
+      const existing=existingSnap.val()||{};
+      const updates={name,lastSeen:dbMod.serverTimestamp()};
+      if(existing.role===role)updates.role=role;
+      else updates.roleView=role;
+      await dbMod.update(memberRef,updates);
+    }else{
+      await dbMod.update(memberRef,{name,role,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
+    }
   }
   await dbMod.onDisconnect(memberRef).remove();
 
@@ -379,7 +393,7 @@ async function connectToRoom(code, name, role, created){
     roomData = snap.val();
     const oldHost = roomData?.meta?.hostUid;
     if(oldHost && !roomData?.members?.[oldHost]) claimHostIfMissing(oldHost);
-    roomRole = roomData?.members?.[user.uid]?.role || roomRole;
+    roomRole = effectiveMemberRole(roomData?.members?.[user.uid]) || roomRole;
     displayName = roomData?.members?.[user.uid]?.name || displayName;
     updateRoomUi();
     saveSession();
@@ -399,6 +413,34 @@ async function connectToRoom(code, name, role, created){
   url.searchParams.set("room", code);
   history.replaceState(null, "", url);
   setStatus("Joining room…");
+}
+
+async function changeRoomRole(){
+  if(busy||!isConnected())return;
+  const next=ui.roleSwitchInput?.value==="hider"?"hider":"seeker";
+  if(next===roomRole){if(ui.roleSwitchStatus)ui.roleSwitchStatus.textContent=`Already ${roleLabel(next)}.`;return;}
+  const guard=bridge()?.canChangeRoomRole?.(next);
+  if(guard&&guard.ok===false){if(ui.roleSwitchStatus)ui.roleSwitchStatus.textContent=guard.message||"Cannot change role right now.";return;}
+  setBusy(true);
+  try{
+    if(next==="hider"&&await roomHasOtherHider(roomCode))throw new Error("This room already has a Hider.");
+    const {dbMod}=firebase,memberRef=dbMod.ref(db,`rooms/${roomCode}/members/${user.uid}`);
+    if(isHost()){
+      await dbMod.update(memberRef,{roleView:next,lastSeen:dbMod.serverTimestamp()});
+    }else{
+      const name=safeName(displayName||roomData?.members?.[user.uid]?.name);
+      try{await dbMod.onDisconnect(memberRef).cancel();}catch{}
+      await dbMod.remove(memberRef);
+      await dbMod.set(memberRef,{name,role:next,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
+      await dbMod.onDisconnect(memberRef).remove();
+    }
+    roomRole=next;saveSession();updateRoomUi();
+    if(ui.roleSwitchStatus){ui.roleSwitchStatus.style.color="#9ef1c2";ui.roleSwitchStatus.textContent=`Role changed to ${roleLabel(next)}.`;}
+  }catch(err){
+    console.warn("Role change failed",err);
+    if(ui.roleSwitchStatus){ui.roleSwitchStatus.style.color="#ffadad";ui.roleSwitchStatus.textContent=err?.message||"Could not change role.";}
+    if(ui.roleSwitchInput)ui.roleSwitchInput.value=roomRole;
+  }finally{setBusy(false);setTimeout(()=>{if(ui.roleSwitchStatus){ui.roleSwitchStatus.textContent="";ui.roleSwitchStatus.style.color="";}},1800);}
 }
 
 async function claimHostIfMissing(oldHost){
@@ -558,6 +600,9 @@ function bindUi(){
   ui.setupNotice = byId("roomSetupNotice");
   ui.hostControlsNote = byId("roomHostControlsNote");
   ui.roomCodeTop = byId("roomTopStatus");
+  ui.roleSwitchInput = byId("roomRoleSwitchSelect");
+  ui.changeRoleBtn = byId("changeRoomRoleBtn");
+  ui.roleSwitchStatus = byId("roomRoleSwitchStatus");
 
   ui.joinCode.addEventListener("input", ()=>ui.joinCode.value=normalizeCode(ui.joinCode.value));
   ui.joinCode.addEventListener("keydown", e=>{ if(e.key === "Enter") joinRoom(); });
@@ -566,6 +611,7 @@ function bindUi(){
   ui.joinBtn.addEventListener("click", joinRoom);
   ui.leaveBtn.addEventListener("click", leaveRoom);
   ui.copyBtn.addEventListener("click", copyRoomCode);
+  ui.changeRoleBtn?.addEventListener("click", changeRoomRole);
   updateRoomUi();
 }
 

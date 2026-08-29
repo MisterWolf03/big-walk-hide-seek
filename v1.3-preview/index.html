@@ -277,6 +277,9 @@
   #roomConnected h3{font-size:13px;margin:0 0 8px}
   #roomConnected .roomMemberList{margin-top:0}
   .roomPopoverMeta{display:none!important}
+  #roomRoleSwitch{display:grid;grid-template-columns:1fr 112px;gap:7px;margin-top:9px;padding-top:9px;border-top:1px solid #394350}
+  #roomRoleSwitch select,#roomRoleSwitch button{padding:7px 8px;min-height:34px}
+  #roomRoleSwitchStatus{grid-column:1/-1;min-height:0;margin-top:0}
   #roomDisconnected>section{margin-bottom:0}
   .roomEntryGrid{display:grid;grid-template-columns:1fr 120px;gap:8px}
   .roomJoinRow{display:grid;grid-template-columns:1fr 110px;gap:8px;margin-top:9px}
@@ -362,6 +365,11 @@
   <div id="roomConnected" aria-label="Room players">
     <h3>Players</h3>
     <div id="roomMemberList" class="roomMemberList"></div>
+    <div id="roomRoleSwitch">
+      <select id="roomRoleSwitchSelect" aria-label="Change role"><option value="seeker">Seeker</option><option value="hider">Hider</option></select>
+      <button id="changeRoomRoleBtn" type="button">Change role</button>
+      <div id="roomRoleSwitchStatus" class="small"></div>
+    </div>
     <div class="roomPopoverMeta">
       <div id="currentRoomCode">—</div>
       <span id="currentRoomRole">—</span>
@@ -384,7 +392,7 @@
 <div id="app">
   <div id="mapPane">
     <div id="stage">
-      <img id="mapImage" src="../big-walk-map.png" alt="">
+      <img id="mapImage" src="big-walk-map.png" alt="">
       <canvas id="mapCanvas"></canvas>
     </div>
     <div id="coordTip">Y —, X —</div>
@@ -418,7 +426,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9.33 4v16M14.67 4v16M4 9.33h16M4 14.67h16"/></svg>
       </button>
       <button id="towerBtn" class="mapToolBtn displayActive" type="button" title="Hide towers" aria-label="Toggle towers" aria-pressed="true">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 21h8M8.5 8 12 3l3.5 5M9.5 13h5M6 7.5l-2 2M18 7.5l2 2"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v7l3 3v8h10v-8l3-3V3h-3v4h-3V3h-4v4H7V3H4Z"/></svg>
       </button>
       <button id="landmarkBtn" class="mapToolBtn displayActive" type="button" title="Hide landmarks" aria-label="Toggle landmarks" aria-pressed="true">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
@@ -607,10 +615,10 @@
         <div class="lockNotice" id="gridLockNotice">Locked.</div>
         <label>Centerline</label>
         <select id="axis">
-          <option value="y">Horizontal centerline — Y 3700</option>
-          <option value="x">Vertical centerline — X 1700</option>
+          <option value="y">Horizontal centerline — Y 37</option>
+          <option value="x">Vertical centerline — X 17</option>
         </select>
-        <p class="small">Centerline questions always cut straight through the middle of the playable map: <b>Y 3700</b> or <b>X 1700</b>.</p>
+        <p class="small">Centerline questions always cut straight through the middle of the playable map: <b>Y 37</b> or <b>X 17</b>.</p>
         <label>Hider's answer</label>
         <select id="splitAnswer">
           <option value="low">North</option>
@@ -847,7 +855,7 @@
       </details>
 
       <details class="settingsGroup" id="relocationSettingsGroup">
-        <summary><span>Forced relocation</span><span class="settingsHint">Private randomized cadence + movement</span></summary>
+        <summary><span>Forced relocation</span><span class="settingsHint">Timing + movement</span></summary>
         <div class="settingsBody">
         <div class="presetBox">
           <strong>Private trigger ranges</strong>
@@ -884,6 +892,26 @@
         </div>
       </details>
 
+      <details class="settingsGroup" id="missionSettingsGroup">
+        <summary><span>Hider missions</span><span class="settingsHint">Timing + offers</span></summary>
+        <div class="settingsBody">
+          <div class="scheduleGrid">
+            <label>First offer (min)
+              <input id="missionFirstMinutes" type="number" min="1" step="1" value="10">
+            </label>
+            <label>Repeat min (min)
+              <input id="missionRepeatMinMinutes" type="number" min="1" step="1" value="10">
+            </label>
+            <label>Repeat max (min)
+              <input id="missionRepeatMaxMinutes" type="number" min="1" step="1" value="15">
+            </label>
+          </div>
+          <button class="primary" id="applyMissionSettingsBtn" style="margin-top:8px">Apply mission settings</button>
+          <div id="missionSettingsValidation" class="validation"></div>
+          <p class="small">Cross the Zone remains optional and completely private to the Hider UI. Repeat timing is randomized inside the configured range.</p>
+        </div>
+      </details>
+
       <details class="settingsGroup">
         <summary><span>Sound</span><span class="settingsHint">Volume + gameplay cues</span></summary>
         <div class="settingsBody">
@@ -911,6 +939,15 @@
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.3.0 preview — Mission + role UI pass</h4>
+        <ul>
+          <li>Restored an always-visible Hider-only mission status card and added configurable mission timing.</li>
+          <li>Added in-room role switching while preserving the one-Hider rule.</li>
+          <li>Changed the Hider match subtitle to Hiding, Relocate, or Mission Active instead of question status.</li>
+          <li>Shortened Centerline display labels to Y 37 / X 17 and refreshed the tower visibility icon.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.3.0 preview — Private relocation ranges + map controls</h4>
         <ul>
@@ -1122,7 +1159,7 @@
 
 <script>
 const APP_VERSION="1.3.0-preview";
-const REQUIRED_ROOMS_BUILD_ID="v13-private-relocation-20260829a";
+const REQUIRED_ROOMS_BUILD_ID="v13-mission-role-ui-20260829a";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -1445,7 +1482,7 @@ function updateTopRoleBadge(){
 function hidingTimeRemaining(){return Math.max(0,Number(hidingSettings.duration||0)-currentMatchSeconds());}
 function updateRoomChrome(){
   const connected=roomModeConnected(),isHider=connected&&roomRole()==="hider",isHost=connected&&!!window.BigWalkRooms?.isHost?.();
-  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]'),relocationSettingsGroup=document.getElementById("relocationSettingsGroup");
+  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]'),relocationSettingsGroup=document.getElementById("relocationSettingsGroup"),missionSettingsGroup=document.getElementById("missionSettingsGroup");
   if(actions)actions.style.display=connected?"flex":"none";
   if(count)count.textContent=String(document.getElementById("roomMemberList")?.children?.length||0);
   if(!connected&&popover)popover.classList.remove("open");
@@ -1454,6 +1491,10 @@ function updateRoomChrome(){
   if(relocationSettingsGroup){
     relocationSettingsGroup.style.display=!connected||isHider||isHost?"":"none";
     relocationSettingsGroup.querySelectorAll("input,button").forEach(el=>el.disabled=connected&&!isHost);
+  }
+  if(missionSettingsGroup){
+    missionSettingsGroup.style.display=!connected||isHider||isHost?"":"none";
+    missionSettingsGroup.querySelectorAll("input,button").forEach(el=>el.disabled=connected&&!isHost);
   }
   if(isHider&&activeTab==="questions")showTab("game");
 }
@@ -1912,7 +1953,6 @@ function updateMissionUi(){
   charges.textContent=isRoomHider()||!roomModeConnected()?String(Math.max(0,Number(hiderPowerCharges||0))):"Hidden";
   const now=currentMatchSeconds();
   if(!roomModeConnected()||!isRoomHider()){section.style.display="none";return;}
-  if(!missionState.active&&!missionState.available){section.style.display="none";return;}
   section.style.display="block";
   if(missionState.active){
     headline.textContent="ACTIVE";
@@ -1949,12 +1989,11 @@ function updateMissionUi(){
     return;
   }
   const nextAt=Number(missionState.nextAt??missionSettings.firstAt),remaining=Math.max(0,nextAt-now);
-  headline.textContent=formatTime(remaining);progress.textContent="—";
-  status.textContent=missionState.lastResult?`Last: ${missionState.lastResult}`:"Waiting";
+  headline.textContent="WAITING";progress.textContent="Optional";
+  status.textContent=`Next offer · ${formatApproxDuration(remaining)}`;
   if(missionSchedulerError)message.textContent=`Mission scheduler error: ${missionSchedulerError}`;
-  else if(relocationState.active&&remaining<=.01)message.textContent="The next mission offer will wait until the current forced relocation is completed.";
-  else if(!window.BigWalkRooms?.hasHider?.())message.textContent="Waiting for a Hider before the next mission can become available.";
-  else message.textContent=`Next optional mission becomes available in ${formatTime(remaining)}. After a mission ends, the next offer is scheduled randomly 10–15 minutes later.`;
+  else if(relocationState.active&&remaining<=.01)message.textContent="The next mission offer will wait until your forced relocation is completed.";
+  else message.textContent=`Cross the Zone is optional. Repeat offers are scheduled randomly ${formatApproxDuration(missionSettings.minInterval)}–${formatApproxDuration(missionSettings.maxInterval)} apart.`;
 }
 
 function updateLocalRelocation(){
@@ -2113,7 +2152,7 @@ window.BigWalkRoomBridge={
       hiderPowerCharges=Math.max(0,Number(game.hiderPowerCharges||0));
       const match=state?.match;
       if(match){matchRunning=!!match.running;matchElapsedMs=Math.max(0,Number(match.elapsedMs||0));matchLastTick=null;}
-      updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();renderMatchTimer();syncMatchControlButtons();
+      updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();updateMissionSettingsInputs();renderMatchTimer();syncMatchControlButtons();
       if(appInitialized)draw();
     }finally{roomApplyingRemoteState=false;}
   },
@@ -2132,6 +2171,10 @@ window.BigWalkRoomBridge={
   },
   setRoomControlAuthority(){syncMatchControlButtons();},
   setRoomSharedEditAuthority(){updateQuestionLocks();},
+  canChangeRoomRole(nextRole){
+    if(roomRole()==="hider"&&nextRole!=="hider"&&(relocationState.active||missionState.active))return {ok:false,message:"Finish the active relocation or mission before switching away from Hider."};
+    return {ok:true};
+  },
   onRoomDisconnected(finalSeconds){
     if(Number.isFinite(Number(finalSeconds)))matchElapsedMs=Math.max(0,Number(finalSeconds)*1000);
     matchRunning=false;matchLastTick=null;renderMatchTimer();syncMatchControlButtons();
@@ -2241,6 +2284,10 @@ function updateRelocationSettingsInputs(){
   const ids={relocationFirstMinMinutes:relocationSettings.firstMin/60,relocationFirstMaxMinutes:relocationSettings.firstMax/60,relocationRepeatMinMinutes:relocationSettings.intervalMin/60,relocationRepeatMaxMinutes:relocationSettings.intervalMax/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
   for(const [id,value] of Object.entries(ids))syncSettingValue(id,value);
 }
+function updateMissionSettingsInputs(){
+  const ids={missionFirstMinutes:missionSettings.firstAt/60,missionRepeatMinMinutes:missionSettings.minInterval/60,missionRepeatMaxMinutes:missionSettings.maxInterval/60};
+  for(const [id,value] of Object.entries(ids))syncSettingValue(id,value);
+}
 function syncHideTimeControls(){
   const hide=document.getElementById("hideTimeMinutes"),linked=document.getElementById("firstQuestionOnHideEnd"),first=document.getElementById("firstUnlockMinutes"),grid=document.getElementById("gridUnlockMinutes");
   if(!hide||!linked||!first||!grid)return;
@@ -2271,14 +2318,18 @@ function renderMatchTimer(){
   updateLocalRelocation();updateRelocationUi();updateLocalHiderMission();updateMissionUi();
   updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();updateTopEconomy();updateRoomChrome();
 
-  const status=document.getElementById("timerStatus"),topSub=document.getElementById("topTimerSub");
-  if(testingUnlockOverride){status.textContent="Testing override active — all questions unlocked.";topSub.textContent="Testing override";return;}
+  const status=document.getElementById("timerStatus"),topSub=document.getElementById("topTimerSub"),hiderView=isRoomHider();
+  if(testingUnlockOverride&&!hiderView){status.textContent="Testing override active — all questions unlocked.";topSub.textContent="Testing override";return;}
   if(!matchRunning&&currentMatchSeconds()<.01){status.textContent="Start the match when everyone is ready.";topSub.textContent="Match not started";return;}
   if(!matchRunning){status.textContent="Match paused.";topSub.textContent="Paused";return;}
-  status.textContent="Match running.";
+  status.textContent=testingUnlockOverride?"Testing override active — all questions unlocked.":"Match running.";
+  if(hiderView){
+    if(relocationState.active)topSub.textContent="Relocate";
+    else if(missionState.active)topSub.textContent="Mission Active";
+    else topSub.textContent="Hiding";
+    return;
+  }
   if(hidingTimeRemaining()>.01)topSub.textContent="Hiding time";
-  else if(roomModeConnected()&&relocationState.active&&isRoomHider())topSub.textContent="Forced relocation active";
-  else if(roomModeConnected()&&missionState.active&&isRoomHider())topSub.textContent="Hider mission active";
   else if(questionCooldownActive())topSub.textContent="Questions cooling down";
   else topSub.textContent="Questions ready";
 }
@@ -2852,7 +2903,7 @@ document.getElementById("applySplit").onclick=()=>{
   const axis=document.getElementById("axis").value,value=axis==="x"?1700:3700,keep=document.getElementById("splitAnswer").value;
   document.getElementById("splitValidation").textContent="";
   const dir=axis==="y"?(keep==="low"?"north":"south"):(keep==="low"?"west":"east");
-  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value}.`,questionCostFor("grid"));
+  addConstraint({type:"split",axis,value,keep},`Hider is ${dir} of ${axis.toUpperCase()} ${value/100}.`,questionCostFor("grid"));
 };
 document.getElementById("applyNearest").onclick=()=>{
   const tower=document.getElementById("nearestTower").value;
@@ -2954,6 +3005,18 @@ document.getElementById("applyQuestionCostsBtn").onclick=()=>{
   for(const [id,key] of Object.entries(ids)){const value=+document.getElementById(id).value;if(!Number.isFinite(value)||value<0||!Number.isInteger(value)){v.textContent="Question prices must be whole numbers of 0 points or more.";return;}nextCosts[key]=value;}
   questionCosts=nextCosts;clearSettingDraft(Object.keys(ids));updateQuestionCostInputs();updateQuestionEconomy();notifyRoomGameStateChanged();
   v.style.color="#9ef1c2";v.textContent="Question prices applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
+};
+document.getElementById("applyMissionSettingsBtn").onclick=()=>{
+  const v=document.getElementById("missionSettingsValidation");v.textContent="";
+  if(roomModeConnected()&&!window.BigWalkRooms?.isHost?.()){v.textContent="Only the room host can change mission settings.";return;}
+  const first=+document.getElementById("missionFirstMinutes").value,min=+document.getElementById("missionRepeatMinMinutes").value,max=+document.getElementById("missionRepeatMaxMinutes").value;
+  if(![first,min,max].every(Number.isFinite)||first<=0||min<=0||max<=0){v.textContent="Mission times must be positive numbers.";return;}
+  if(max<min){v.textContent="Repeat max cannot be lower than repeat min.";return;}
+  missionSettings={firstAt:first*60,minInterval:min*60,maxInterval:max*60};
+  if(!missionState.active&&!missionState.available)missionState={...missionState,nextAt:Number(missionState.index||0)===0?missionSettings.firstAt:currentMatchSeconds()+nextMissionDelay()};
+  clearSettingDraft(["missionFirstMinutes","missionRepeatMinMinutes","missionRepeatMaxMinutes"]);
+  updateMissionSettingsInputs();renderMatchTimer();notifyRoomGameStateChanged();
+  v.style.color="#9ef1c2";v.textContent="Mission settings applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
 const soundEnabledEl=document.getElementById("soundEnabled"),soundVolumeEl=document.getElementById("soundVolume"),soundVolumeValueEl=document.getElementById("soundVolumeValue");
@@ -3078,7 +3141,7 @@ function initializeMapApp(){
   if(appInitialized || !img.naturalWidth || !img.naturalHeight)return;
   appInitialized=true;
   canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
-  populate();initializeQuestionCollapsibles();bindSettingDraftProtection();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();syncMapDisplayButtons();
+  populate();initializeQuestionCollapsibles();bindSettingDraftProtection();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();updateMissionSettingsInputs();syncMapDisplayButtons();
   setToolMode("pan");renderMatchTimer();startTimerLoop();draw();fitMap();
   checkForSiteUpdate();
   setInterval(checkForSiteUpdate,300000);
@@ -3088,6 +3151,6 @@ if(img.complete && img.naturalWidth>0)initializeMapApp();
 window.addEventListener("resize",()=>{if(appInitialized)fitMap();});
 </script>
 <script src="firebase-config.js"></script>
-<script type="module" src="rooms.js?v=v13-private-relocation-20260829a"></script>
+<script type="module" src="rooms.js?v=v13-mission-role-ui-20260829a"></script>
 </body>
 </html>
