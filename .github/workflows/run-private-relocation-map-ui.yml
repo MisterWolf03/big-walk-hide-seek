@@ -1,0 +1,29 @@
+name: Private relocation map UI patch
+on:
+  push:
+    branches: [v1.3.0-hider]
+    paths: ['.github/workflows/run-private-relocation-map-ui.yml']
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v1.3.0-hider
+      - name: Apply patch
+        run: python3 .github/scripts/apply-private-relocation-map-ui.py
+      - name: Check JavaScript
+        run: |
+          python3 -c "from pathlib import Path; s=Path('index.html').read_text(); Path('/tmp/app.js').write_text(s[s.index('<script>')+8:s.index('</script>',s.index('<script>')+8)])"
+          node --check /tmp/app.js
+          node --check rooms.js
+          git diff --check
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html rooms.js
+          git commit -m 'Add private randomized relocation ranges'
+          git push origin v1.3.0-hider
