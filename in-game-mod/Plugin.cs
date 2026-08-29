@@ -3,7 +3,7 @@ using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using UnityEngine;
 
-[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.2")]
+[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.3")]
 public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
@@ -11,13 +11,12 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        Logger.LogInfo("Big Walk Hide + Seek 0.0.2 loaded.");
+        Logger.LogInfo("Big Walk Hide + Seek 0.0.3 loaded.");
         Logger.LogInfo("Press F7 to toggle the prototype overlay.");
         AddComponent<HideSeekOverlay>();
     }
 }
 
-[DefaultExecutionOrder(-10000)]
 public class HideSeekOverlay : MonoBehaviour
 {
     private bool overlayOpen;
@@ -46,10 +45,9 @@ public class HideSeekOverlay : MonoBehaviour
 
         if (overlayOpen)
         {
-            // The IMGUI overlay can consume mouse GUI events, but Big Walk's
-            // gameplay scripts can still poll Unity's input axes independently.
-            // Run this component very early and clear those axes every frame so
-            // the camera/player controls do not react behind the overlay.
+            // IMGUI consuming mouse events does not automatically stop gameplay
+            // scripts from polling Unity's legacy input axes. Clear those axes
+            // while the overlay is open and keep the cursor released.
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
             Input.ResetInputAxes();
@@ -84,6 +82,14 @@ public class HideSeekOverlay : MonoBehaviour
     {
         if (!overlayOpen)
             return;
+
+        // Clear legacy input here as well. OnGUI runs separately from Update,
+        // which gives this prototype another chance to suppress mouse axes
+        // without relying on Unity script-execution-order attributes that are
+        // not exposed correctly by Big Walk's generated IL2CPP interop.
+        Input.ResetInputAxes();
+        Cursor.visible = true;
+        Cursor.lockState = CursorLockMode.None;
 
         EnsureStyles();
 
