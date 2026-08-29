@@ -957,6 +957,14 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.3.0 preview — Guaranteed Impossible Route target</h4>
+        <ul>
+          <li>Impossible Route no longer requires far-side cells to form a four-cell adjacency cluster before a replacement can appear.</li>
+          <li>The reroll now chooses the far legal point most separated from the rejected target and builds the replacement from the nearest equally-far legal cells.</li>
+          <li>If the legal far side is fragmented, the replacement can span nearby legal fragments instead of disappearing completely.</li>
+        </ul>
+      </div>
+      <div class="changeEntry">
         <h4>v1.3.0 preview — Impossible Route reroll fix</h4>
         <ul>
           <li>Impossible Route now generates a compact connected replacement patch instead of requiring a second sector roughly 90 degrees away.</li>
@@ -1925,42 +1933,25 @@ function buildCrossZoneMissionPlan(start,opts={}){
     const rejectedCells=Array.isArray(rerollFrom.targetCells)?rerollFrom.targetCells:[];
     const rcx=rejectedCells.length?rejectedCells.reduce((sum,c)=>sum+Number(c.x),0)/rejectedCells.length:Number(start.x);
     const rcy=rejectedCells.length?rejectedCells.reduce((sum,c)=>sum+Number(c.y),0)/rejectedCells.length:Number(start.y);
-    const farCells=cells.filter(c=>c.distance>=minDistance);
+    let farCells=cells.filter(c=>c.distance>=minDistance);
+    if(!farCells.length)farCells=[...cells].sort((a,b)=>b.distance-a.distance).slice(0,Math.min(12,cells.length));
     const outsideRejected=farCells.filter(c=>!rejected.has(c.key));
-    const pools=[];
-    if(outsideRejected.length>=4)pools.push(outsideRejected);
-    pools.push(farCells);
-    let best=null;
-    for(const pool of pools){
-      if(!pool.length)continue;
-      const byKey=new Map(pool.map(c=>[c.key,c]));
-      const seeds=[...pool].sort((a,b)=>Math.hypot(b.x-rcx,b.y-rcy)-Math.hypot(a.x-rcx,a.y-rcy));
-      for(const seed of seeds){
-        const queue=[seed],seen=new Set([seed.key]),patch=[];
-        while(queue.length&&patch.length<14){
-          const cur=queue.shift();patch.push(cur);
-          const neighbors=[
-            relocationCellKey(cur.x+Number(region.step||25),cur.y),
-            relocationCellKey(cur.x-Number(region.step||25),cur.y),
-            relocationCellKey(cur.x,cur.y+Number(region.step||25)),
-            relocationCellKey(cur.x,cur.y-Number(region.step||25))
-          ].map(key=>byKey.get(key)).filter(Boolean)
-           .sort((a,b)=>Math.hypot(b.x-rcx,b.y-rcy)-Math.hypot(a.x-rcx,a.y-rcy));
-          for(const n of neighbors){if(!seen.has(n.key)){seen.add(n.key);queue.push(n);}}
+    const seedPool=outsideRejected.length?outsideRejected:farCells;
+    const seed=[...seedPool].sort((a,b)=>Math.hypot(b.x-rcx,b.y-rcy)-Math.hypot(a.x-rcx,a.y-rcy))[0]||null;
+    if(seed){
+      const preferred=outsideRejected.length?outsideRejected:farCells;
+      targetCells=[...preferred]
+        .sort((a,b)=>Math.hypot(a.x-seed.x,a.y-seed.y)-Math.hypot(b.x-seed.x,b.y-seed.y))
+        .slice(0,Math.min(14,Math.max(1,preferred.length)));
+      if(targetCells.length<4&&farCells.length>targetCells.length){
+        const picked=new Set(targetCells.map(c=>c.key));
+        for(const c of [...farCells].sort((a,b)=>Math.hypot(a.x-seed.x,a.y-seed.y)-Math.hypot(b.x-seed.x,b.y-seed.y))){
+          if(picked.has(c.key))continue;
+          targetCells.push(c);picked.add(c.key);
+          if(targetCells.length>=Math.min(4,farCells.length))break;
         }
-        if(patch.length<4)continue;
-        const pcx=patch.reduce((sum,c)=>sum+c.x,0)/patch.length,pcy=patch.reduce((sum,c)=>sum+c.y,0)/patch.length;
-        const shift=Math.hypot(pcx-rcx,pcy-rcy);
-        if(shift<Number(region.step||25)*1.25&&farCells.length>6)continue;
-        const avgDistance=patch.reduce((sum,c)=>sum+c.distance,0)/patch.length;
-        const score=shift+avgDistance*.15+(pool===outsideRejected?maxDistance*.25:0);
-        if(!best||score>best.score)best={cells:patch,cx:pcx,cy:pcy,score};
       }
-      if(best)break;
-    }
-    if(best){
-      centerAngle=Math.atan2(best.cy-start.y,best.cx-start.x);
-      targetCells=best.cells;
+      centerAngle=Math.atan2(seed.y-start.y,seed.x-start.x);
     }
   }
 
