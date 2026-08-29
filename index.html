@@ -940,6 +940,14 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.3.0 preview — Mission reset + cues</h4>
+        <ul>
+          <li>Match reset now explicitly clears available/active mission state and all local mission progress.</li>
+          <li>Added Hider-only visual/audio cues when a mission becomes available and when it is accepted.</li>
+          <li>Resetting an active mission no longer plays a misleading mission-cancelled cue.</li>
+        </ul>
+      </div>
+      <div class="changeEntry">
         <h4>v1.3.0 preview — Mission + role UI pass</h4>
         <ul>
           <li>Restored an always-visible Hider-only mission status card and added configurable mission timing.</li>
@@ -1280,6 +1288,7 @@ function playGameSound(name){
   else if(name==="relocationOvertime"){tone(880,.00,.13,1,"square");tone(660,.16,.13,1,"square");tone(880,.32,.13,1,"square");tone(440,.50,.34,1,"sawtooth");}
   else if(name==="relocationReady"){tone(440,.00,.10,.55,"triangle");tone(660,.09,.11,.65,"triangle");tone(880,.18,.20,.8,"sine");}
   else if(name==="relocationComplete"){tone(392,.00,.11,.55,"triangle");tone(523,.09,.13,.65,"triangle");tone(659,.19,.24,.8,"sine");}
+  else if(name==="missionAvailable"){tone(494,.00,.10,.55,"triangle");tone(659,.09,.11,.68,"triangle");tone(988,.19,.25,.85,"sine");}
   else if(name==="missionStart"){tone(523,.00,.12,.65,"triangle");tone(659,.10,.13,.72,"triangle");tone(784,.21,.24,.85,"sine");}
   else if(name==="missionComplete"){tone(659,.00,.12,.65,"triangle");tone(784,.10,.13,.75,"triangle");tone(1047,.21,.28,.9,"sine");}
   else if(name==="missionCancel"){tone(330,.00,.15,.6,"triangle");tone(247,.13,.24,.7,"sine");}
@@ -1295,7 +1304,8 @@ const GAME_CUE_META={
   relocationOvertime:{kind:"relocation",title:"Relocation overtime",detail:"Your overtime reveal has triggered. Keep moving and finish the relocation."},
   relocationReady:{kind:"relocation",title:"Relocation target reached",detail:"You can press Ready once you have your new hiding spot."},
   relocationComplete:{kind:"relocation",title:"Relocation complete",detail:"A fresh relocation interval has started."},
-  missionStart:{kind:"mission",title:"Mission started",detail:"Cross the Zone is active."},
+  missionAvailable:{kind:"mission",title:"Mission available",detail:"Cross the Zone is ready if you want to accept it."},
+  missionStart:{kind:"mission",title:"Mission accepted",detail:"Cross the Zone is active."},
   missionComplete:{kind:"mission",title:"Mission complete",detail:"Power Charge earned."},
   missionCancel:{kind:"mission",title:"Mission cancelled",detail:"The mission ended without a charge."},
   matchStart:{kind:"match",title:"Match started",detail:"The hiding phase has begun."},
@@ -1343,6 +1353,7 @@ function captureAudioEventState(){
     relocationOvertime:roomModeConnected()&&!!relocationState.active&&Number.isFinite(Number(relocationState.deadline))&&sec>=Number(relocationState.deadline),
     relocationIndex:Number(relocationState.index||0),
     relocationReady:localRelocationReadyNow(),
+    missionAvailable:roomModeConnected()&&!!missionState.available,
     missionActive:roomModeConnected()&&!!missionState.active,
     missionIndex:Number(missionState.index||0),
     missionLastResult:String(missionState.lastResult||"")
@@ -1358,10 +1369,11 @@ function updateGameAudioEvents(){
   if(prev.cooldownActive&&!now.cooldownActive)triggerGameCue("cooldownReady");
   if(!prev.relocationActive&&now.relocationActive)triggerGameCue("relocationStart");
   if(!prev.relocationOvertime&&now.relocationOvertime)triggerGameCue("relocationOvertime");
-  if(prev.relocationActive&&!now.relocationActive)triggerGameCue("relocationComplete");
+  if(prev.relocationActive&&!now.relocationActive&&now.sec>.1)triggerGameCue("relocationComplete");
   if(!prev.relocationReady&&now.relocationReady)triggerGameCue("relocationReady");
-  if(!prev.missionActive&&now.missionActive)triggerGameCue("missionStart");
-  if(prev.missionActive&&!now.missionActive)triggerGameCue(now.missionLastResult==="completed"?"missionComplete":"missionCancel");
+  if(now.running&&!prev.missionAvailable&&now.missionAvailable)triggerGameCue("missionAvailable");
+  if(now.running&&!prev.missionActive&&now.missionActive)triggerGameCue("missionStart");
+  if(prev.missionActive&&!now.missionActive&&now.sec>.1)triggerGameCue(now.missionLastResult==="completed"?"missionComplete":"missionCancel");
   audioEventSnapshot=now;
 }
 
@@ -2161,7 +2173,7 @@ window.BigWalkRoomBridge={
     try{
       matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;seekerPointsSpent=0;
       relocationState={active:false,index:0,scheduleToken:"",scheduleFrom:0,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();resetLocalRelocationSchedule();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
-      missionState={active:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;resetLocalHiderMissionPlan();
+      missionState={active:false,available:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;missionStartRequestPending=false;missionSchedulerError="";resetLocalHiderMissionPlan();
       constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null,rulerB=null;
       ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
       updateMarkerPanel();updateRulerPanel();renderMatchTimer();syncMatchControlButtons();
@@ -2360,7 +2372,7 @@ function resetMatchState(){
   matchRunning=false;matchElapsedMs=0;matchLastTick=null;
   questionCooldownUntil=0;seekerPointsSpent=0;
   relocationState={active:false,index:0,scheduleToken:"",scheduleFrom:0,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();resetLocalRelocationSchedule();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
-  missionState={active:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;resetLocalHiderMissionPlan();
+  missionState={active:false,available:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;missionStartRequestPending=false;missionSchedulerError="";resetLocalHiderMissionPlan();
   constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker ? "live" : null;nextMarkerId=1;rulerA=null;rulerB=null;
   document.getElementById("startMatchBtn").textContent="Start match";
   document.getElementById("startMatchBtn").disabled=false;
