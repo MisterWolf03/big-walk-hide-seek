@@ -828,7 +828,7 @@
         </div>
       </details>
 
-      <details class="settingsGroup">
+      <details class="settingsGroup" id="relocationSettingsGroup">
         <summary><span>Forced relocation</span><span class="settingsHint">Cadence + movement target</span></summary>
         <div class="settingsBody">
         <div class="scheduleGrid">
@@ -1264,9 +1264,9 @@ function showGameCue(name,detailOverride=""){
   const toast=document.getElementById("gameCueToast"),title=document.getElementById("gameCueTitle"),detail=document.getElementById("gameCueDetail");
   if(!toast||!title||!detail)return;
   clearTimeout(gameCueTimer);
-  toast.className=meta.kind;title.textContent=meta.title;detail.textContent=detailOverride||meta.detail;
+  toast.style.display="";toast.className=meta.kind;title.textContent=meta.title;detail.textContent=detailOverride||meta.detail;
   void toast.offsetWidth;toast.classList.add("show");
-  gameCueTimer=setTimeout(()=>{toast.classList.remove("show");setTimeout(()=>{if(!toast.classList.contains("show"))toast.style.display="none";},230);},2700);
+  gameCueTimer=setTimeout(()=>toast.classList.remove("show"),2700);
 }
 function triggerGameCue(name){
   if(!cueAllowedForRole(name))return;
@@ -1431,12 +1431,13 @@ function updateTopRoleBadge(){
 function hidingTimeRemaining(){return Math.max(0,Number(hidingSettings.duration||0)-currentMatchSeconds());}
 function updateRoomChrome(){
   const connected=roomModeConnected(),isHider=connected&&roomRole()==="hider";
-  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]');
+  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]'),relocationSettingsGroup=document.getElementById("relocationSettingsGroup");
   if(actions)actions.style.display=connected?"flex":"none";
   if(count)count.textContent=String(document.getElementById("roomMemberList")?.children?.length||0);
   if(!connected&&popover)popover.classList.remove("open");
   if(playersBtn)playersBtn.setAttribute("aria-expanded",String(!!popover?.classList.contains("open")));
   if(qTab)qTab.style.display=isHider?"none":"";
+  if(relocationSettingsGroup)relocationSettingsGroup.style.display=!connected||isHider?"":"none";
   if(isHider&&activeTab==="questions")showTab("game");
 }
 function initializeQuestionCollapsibles(){
@@ -1516,7 +1517,7 @@ function updateGameDashboard(){
     eyebrow.textContent="CURRENT OBJECTIVE";title.textContent=isHider?"Cross the Zone":"Hider mission active";
     if(isHider&&liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
     else detail.textContent=isHider?"Reach the private purple target area.":"The mission target and Hider progress remain private.";
-    next.textContent="Forced relocation · paused";return;
+    next.textContent=isHider?"Forced relocation · paused":"Mission in progress";return;
   }
   if(isHider&&missionState.available){eyebrow.textContent="OPTIONAL OBJECTIVE";title.textContent="Mission available";detail.textContent="Cross the Zone is ready whenever you want to take it.";return;}
   title.textContent=isHider?"Stay hidden":"Search for the Hider";
@@ -2186,15 +2187,7 @@ function updateMilestones(){
     else if(!nextFound){el.classList.add("next");nextFound=true;}
   }
 }
-function updateRuleTimes(){
-  document.getElementById("ruleHideTime").textContent=formatTime(hidingSettings.duration);
-  document.getElementById("ruleGridTime").textContent=formatTime(unlockTimes.grid);
-  document.getElementById("ruleNearestTime").textContent=formatTime(unlockTimes.nearest);
-  document.getElementById("ruleTowerRadiusTime").textContent=formatTime(unlockTimes.towerRadius);
-  document.getElementById("ruleLandmarkTime").textContent=formatTime(unlockTimes.landmark);
-  document.getElementById("ruleMarkerTime").textContent=formatTime(unlockTimes.marker);
-  document.getElementById("ruleCooldownTime").textContent=formatTime(questionCooldownSeconds);
-}
+function updateRuleTimes(){}
 function updateRelocationSettingsInputs(){
   const ids={relocationFirstMinutes:relocationSettings.firstAt/60,relocationIntervalMinutes:relocationSettings.interval/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
   for(const [id,value] of Object.entries(ids))syncSettingValue(id,value);
