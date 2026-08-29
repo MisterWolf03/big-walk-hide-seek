@@ -210,7 +210,6 @@
   .moreGrid button{text-align:left;padding:12px}
   .moreGrid b{display:block;font-size:13px;margin-bottom:3px}
   .moreGrid span{display:block;font-size:11px;color:var(--muted);line-height:1.3}
-  .questionCard.locked>label,.questionCard.locked>select,.questionCard.locked>input,.questionCard.locked>button,.questionCard.locked>p,.questionCard.locked>.validation,.questionCard.locked>div:not(.questionCost):not(.lockNotice){display:none!important}
   .questionCard.locked{padding-bottom:9px}
   .questionCard.locked .lockNotice{margin-bottom:0}
   .settingsGroup{background:var(--panel2);border:1px solid #303947;border-radius:11px;margin-bottom:9px;overflow:hidden}
@@ -234,6 +233,38 @@
   .questionCard p.small{font-size:11px;line-height:1.35;margin:6px 0}
   .questionCard .validation{min-height:12px;margin-top:4px}
   .questionCard .lockNotice{padding:6px 7px;font-size:11px;margin-bottom:6px}
+  .questionCardToggle{
+    appearance:none;width:100%;border:0;background:transparent!important;color:var(--text);padding:1px 0 4px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;font-size:16px;font-weight:900;cursor:pointer
+  }
+  .questionCardToggle:hover{color:#fff}
+  .questionChevron{font-size:16px;color:var(--muted);transition:transform .16s ease}
+  .questionCard:not(.collapsed) .questionChevron{transform:rotate(180deg)}
+  .questionCard.collapsed .questionCardBody{display:none}
+  .questionCard.locked .questionCardBody{display:none!important}
+  .questionCard.locked .questionCardToggle{opacity:1}
+  #topEconomy{
+    display:none;position:absolute;left:50%;transform:translateX(-50%);align-items:baseline;gap:7px;
+    white-space:nowrap;padding:6px 10px;border:1px solid #435064;border-radius:999px;background:#171d25;z-index:3
+  }
+  #topEconomyValue{font-size:13px;font-weight:900}
+  #topEconomyRate{font-size:10px;font-weight:750;color:var(--muted)}
+  #topEconomy.hider{border-color:#6e4f7d;background:#281b30;color:#efceff}
+  #topEconomy.seeker{border-color:#4e6480;background:#172535;color:#cbe3ff}
+  #gameCueToast{
+    display:none;position:fixed;top:70px;left:50%;transform:translate(-50%,-10px) scale(.97);z-index:95;
+    min-width:240px;max-width:min(420px,calc(100vw - 28px));padding:10px 13px;border:1px solid #526174;border-radius:11px;
+    background:rgba(20,26,34,.98);box-shadow:0 12px 34px rgba(0,0,0,.42);pointer-events:none;opacity:0
+  }
+  #gameCueToast.show{display:block;animation:gameCueIn .22s ease-out forwards,gameCuePulse .55s ease-out .22s 1}
+  #gameCueTitle{font-size:13px;font-weight:900}
+  #gameCueDetail{font-size:11px;color:#c5ced9;margin-top:2px;line-height:1.3}
+  #gameCueToast.question{border-color:#4e7a62;background:rgba(23,42,32,.98)}
+  #gameCueToast.relocation{border-color:#8b5f91;background:rgba(42,27,47,.98)}
+  #gameCueToast.mission{border-color:#765aae;background:rgba(38,27,54,.98)}
+  #gameCueToast.match{border-color:#79642d;background:rgba(43,37,20,.98)}
+  @keyframes gameCueIn{to{opacity:1;transform:translate(-50%,0) scale(1)}}
+  @keyframes gameCuePulse{0%,100%{box-shadow:0 12px 34px rgba(0,0,0,.42)}50%{box-shadow:0 0 0 4px rgba(255,255,255,.08),0 12px 34px rgba(0,0,0,.42)}}
   #topRoomActions{display:none;align-items:center;gap:6px;flex:0 0 auto}
   #topRoomActions button{width:auto;padding:6px 9px;min-height:34px}
   #roomPlayersBtn{display:flex;align-items:center;gap:6px}
@@ -288,6 +319,9 @@
     #tabs{overflow-x:auto}
     .tabBtn{padding:7px 9px}
     #topTimerSub{display:none}
+    #topEconomy{padding:5px 7px;gap:4px}
+    #topEconomyValue{font-size:11px}
+    #topEconomyRate{font-size:9px}
     #roomConnected{right:8px;top:52px}
     #leaveRoomBtn{font-size:11px;padding:6px 7px}
     #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
@@ -307,6 +341,7 @@
     <button class="tabBtn" data-tab="tools">Map</button>
     <button class="tabBtn" data-tab="more">More</button>
   </div>
+  <div id="topEconomy"><span id="topEconomyValue">0</span><span id="topEconomyRate"></span></div>
   <div id="roomTopStatus">Offline</div>
   <div id="topTimer">
     <div>
@@ -338,6 +373,10 @@
 <div id="updateBanner">
   <span id="updateBannerText">A newer version is available.</span>
   <button id="reloadLatestBtn">Reload latest</button>
+</div>
+<div id="gameCueToast" role="status" aria-live="polite">
+  <div id="gameCueTitle"></div>
+  <div id="gameCueDetail"></div>
 </div>
 
 <div id="app">
@@ -431,7 +470,7 @@
         <div id="timerStatus" class="miniStatus">Start the match when everyone is ready.</div>
       </section>
 
-      <section id="seekerPointsSection" class="compactSection">
+      <section id="seekerPointsSection" class="compactSection" style="display:none">
         <h3>Seeker points</h3>
         <div class="metric"><b>Available</b><span id="seekerPointsBalance">0</span></div>
         <div class="metric"><b>Earn rate</b><span id="seekerPointsRate">+1 point / minute</span></div>
@@ -442,7 +481,7 @@
       <section id="relocationGameSection">
         <h3>Forced relocation</h3>
         <div class="relocationBig secondaryTimer" id="relocationHeadline">ACTIVE</div>
-        <div class="metric"><b>Status</b><span id="relocationStatus">Relocation in progress</span></div>
+        <span id="relocationStatus" style="display:none"></span>
         <div class="metric"><b>Minimum move</b><span id="relocationTarget">250 units</span></div>
         <div class="metric"><b>Progress</b><span id="relocationProgress">—</span></div>
         <div id="relocationMessage" class="small" style="margin-top:8px"></div>
@@ -455,7 +494,7 @@
         <div class="metric"><b>Status</b><span id="missionStatus">Optional</span></div>
         <div class="metric"><b>Mission</b><span id="missionType">Cross the Zone</span></div>
         <div class="metric"><b>Progress</b><span id="missionProgress">—</span></div>
-        <div class="metric"><b>Power Charges</b><span class="powerCharge" id="hiderPowerCharges">0</span></div>
+        <div class="metric" style="display:none"><b>Power Charges</b><span class="powerCharge" id="hiderPowerCharges">0</span></div>
         <div id="missionMessage" class="small" style="margin-top:8px"></div>
         <button class="primary" id="missionStartBtn" style="display:none;margin-top:8px">Start mission</button>
       </section>
@@ -685,17 +724,6 @@
         </ul>
       </section>
 
-      <section>
-        <h3>Current question schedule</h3>
-        <div class="metric"><b>Hiding time</b><span id="ruleHideTime">10:00</span></div>
-        <div class="metric"><b>Centerline</b><span id="ruleGridTime">10:00</span></div>
-        <div class="metric"><b>Nearest tower</b><span id="ruleNearestTime">20:00</span></div>
-        <div class="metric"><b>Tower radius</b><span id="ruleTowerRadiusTime">30:00</span></div>
-        <div class="metric"><b>Landmark questions</b><span id="ruleLandmarkTime">40:00</span></div>
-        <div class="metric"><b>Marker questions</b><span id="ruleMarkerTime">50:00</span></div>
-        <div class="metric"><b>Question cooldown</b><span id="ruleCooldownTime">05:00</span></div>
-        <p class="small">The site automatically enforces both unlock times and the global question cooldown.</p>
-      </section>
     </div>
 
     <div id="view-settings" class="panelView">
@@ -800,7 +828,7 @@
         </div>
       </details>
 
-      <details class="settingsGroup">
+      <details class="settingsGroup" id="relocationSettingsGroup">
         <summary><span>Forced relocation</span><span class="settingsHint">Cadence + movement target</span></summary>
         <div class="settingsBody">
         <div class="scheduleGrid">
@@ -881,6 +909,16 @@
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.3.0 preview — Gameplay clarity pass</h4>
+        <ul>
+          <li>Made question cards collapsible and moved role economy into the center of the top bar.</li>
+          <li>Added animated visual notifications that identify gameplay sounds as they occur.</li>
+          <li>Relocation scheduling and normal relocation activity are now private to the Hider; Seekers only see intentional reveal effects.</li>
+          <li>Question unlock/cooldown cues are Seeker-only and relocation cues are Hider-only.</li>
+          <li>Fixed Settings number fields being overwritten while a user is editing an unapplied draft.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.3.0 preview — Room + question cleanup</h4>
         <ul>
@@ -1127,6 +1165,7 @@ let questionCosts={
 let questionCooldownUntil=0;
 let seekerPointsSpent=0;
 const pointsPerMinute=1;
+const settingsDirtyInputs=new Set();
 let relocationSettings={firstAt:1500,interval:1200,window:300,minDistance:250,skipBelow:75};
 let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
 let localRelocationPlan=null,relocationMutationBusy=false;
@@ -1197,6 +1236,44 @@ function playGameSound(name){
   else if(name==="matchPause"){tone(440,.00,.13,.6,"triangle");tone(330,.11,.20,.6,"sine");}
   else if(name==="matchResume"){tone(330,.00,.12,.55,"sine");tone(494,.10,.20,.7,"triangle");}
 }
+let gameCueTimer=null;
+const GAME_CUE_META={
+  questionUnlock:{kind:"question",title:"Question unlocked",detail:"A new Seeker question type is available."},
+  cooldownReady:{kind:"question",title:"Questions ready",detail:"The global question cooldown has ended."},
+  relocationStart:{kind:"relocation",title:"Forced relocation",detail:"Move to a new legal hiding area before time runs out."},
+  relocationOvertime:{kind:"relocation",title:"Relocation overtime",detail:"Your overtime reveal has triggered. Keep moving and finish the relocation."},
+  relocationReady:{kind:"relocation",title:"Relocation target reached",detail:"You can press Ready once you have your new hiding spot."},
+  relocationComplete:{kind:"relocation",title:"Relocation complete",detail:"A fresh relocation interval has started."},
+  missionStart:{kind:"mission",title:"Mission started",detail:"Cross the Zone is active."},
+  missionComplete:{kind:"mission",title:"Mission complete",detail:"Power Charge earned."},
+  missionCancel:{kind:"mission",title:"Mission cancelled",detail:"The mission ended without a charge."},
+  matchStart:{kind:"match",title:"Match started",detail:"The hiding phase has begun."},
+  matchPause:{kind:"match",title:"Match paused",detail:"Gameplay timers are paused."},
+  matchResume:{kind:"match",title:"Match resumed",detail:"Gameplay timers are running again."}
+};
+function cueAllowedForRole(name){
+  if(!roomModeConnected())return true;
+  const role=roomRole();
+  if(name==="questionUnlock"||name==="cooldownReady")return role==="seeker";
+  if(name.startsWith("relocation"))return role==="hider";
+  if(name.startsWith("mission"))return role==="hider";
+  return true;
+}
+function showGameCue(name,detailOverride=""){
+  const meta=GAME_CUE_META[name];if(!meta)return;
+  const toast=document.getElementById("gameCueToast"),title=document.getElementById("gameCueTitle"),detail=document.getElementById("gameCueDetail");
+  if(!toast||!title||!detail)return;
+  clearTimeout(gameCueTimer);
+  toast.style.display="";toast.className=meta.kind;title.textContent=meta.title;detail.textContent=detailOverride||meta.detail;
+  void toast.offsetWidth;toast.classList.add("show");
+  gameCueTimer=setTimeout(()=>toast.classList.remove("show"),2700);
+}
+function triggerGameCue(name){
+  if(!cueAllowedForRole(name))return;
+  showGameCue(name);
+  playGameSound(name);
+}
+
 function audioContextKey(){
   return roomModeConnected()?`room:${window.BigWalkRooms?.getRoomCode?.()||"connected"}`:"local";
 }
@@ -1224,16 +1301,16 @@ function updateGameAudioEvents(){
   const now=captureAudioEventState();
   if(!audioEventSnapshot||audioEventSnapshot.key!==now.key){audioEventSnapshot=now;return;}
   const prev=audioEventSnapshot;
-  if(!prev.running&&now.running)playGameSound(now.sec<2?"matchStart":"matchResume");
-  else if(prev.running&&!now.running&&now.sec>.1)playGameSound("matchPause");
-  if(now.running&&now.unlockCount>prev.unlockCount)playGameSound("questionUnlock");
-  if(prev.cooldownActive&&!now.cooldownActive&&!now.relocationActive)playGameSound("cooldownReady");
-  if(!prev.relocationActive&&now.relocationActive)playGameSound("relocationStart");
-  if(!prev.relocationOvertime&&now.relocationOvertime)playGameSound("relocationOvertime");
-  if(prev.relocationActive&&!now.relocationActive)playGameSound("relocationComplete");
-  if(!prev.relocationReady&&now.relocationReady)playGameSound("relocationReady");
-  if(!prev.missionActive&&now.missionActive)playGameSound("missionStart");
-  if(prev.missionActive&&!now.missionActive)playGameSound(now.missionLastResult==="completed"?"missionComplete":"missionCancel");
+  if(!prev.running&&now.running)triggerGameCue(now.sec<2?"matchStart":"matchResume");
+  else if(prev.running&&!now.running&&now.sec>.1)triggerGameCue("matchPause");
+  if(now.running&&now.unlockCount>prev.unlockCount)triggerGameCue("questionUnlock");
+  if(prev.cooldownActive&&!now.cooldownActive)triggerGameCue("cooldownReady");
+  if(!prev.relocationActive&&now.relocationActive)triggerGameCue("relocationStart");
+  if(!prev.relocationOvertime&&now.relocationOvertime)triggerGameCue("relocationOvertime");
+  if(prev.relocationActive&&!now.relocationActive)triggerGameCue("relocationComplete");
+  if(!prev.relocationReady&&now.relocationReady)triggerGameCue("relocationReady");
+  if(!prev.missionActive&&now.missionActive)triggerGameCue("missionStart");
+  if(prev.missionActive&&!now.missionActive)triggerGameCue(now.missionLastResult==="completed"?"missionComplete":"missionCancel");
   audioEventSnapshot=now;
 }
 
@@ -1354,37 +1431,72 @@ function updateTopRoleBadge(){
 function hidingTimeRemaining(){return Math.max(0,Number(hidingSettings.duration||0)-currentMatchSeconds());}
 function updateRoomChrome(){
   const connected=roomModeConnected(),isHider=connected&&roomRole()==="hider";
-  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]');
+  const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]'),relocationSettingsGroup=document.getElementById("relocationSettingsGroup");
   if(actions)actions.style.display=connected?"flex":"none";
   if(count)count.textContent=String(document.getElementById("roomMemberList")?.children?.length||0);
   if(!connected&&popover)popover.classList.remove("open");
   if(playersBtn)playersBtn.setAttribute("aria-expanded",String(!!popover?.classList.contains("open")));
   if(qTab)qTab.style.display=isHider?"none":"";
+  if(relocationSettingsGroup)relocationSettingsGroup.style.display=!connected||isHider?"":"none";
   if(isHider&&activeTab==="questions")showTab("game");
 }
+function initializeQuestionCollapsibles(){
+  document.querySelectorAll(".questionCard").forEach(section=>{
+    if(section.dataset.collapsibleReady==="1")return;
+    const heading=section.querySelector(":scope > h3"),cost=section.querySelector(":scope > .questionCost"),notice=section.querySelector(":scope > .lockNotice");
+    if(!heading)return;
+    const toggle=document.createElement("button");toggle.type="button";toggle.className="questionCardToggle";toggle.setAttribute("aria-expanded","false");
+    const title=document.createElement("span");title.textContent=heading.textContent;
+    const chevron=document.createElement("span");chevron.className="questionChevron";chevron.textContent="⌄";
+    toggle.append(title,chevron);heading.replaceWith(toggle);
+    const body=document.createElement("div");body.className="questionCardBody";
+    let node=(notice||cost||toggle).nextSibling;
+    while(node){const next=node.nextSibling;body.appendChild(node);node=next;}
+    section.appendChild(body);section.classList.add("collapsed");section.dataset.collapsibleReady="1";
+    toggle.addEventListener("click",()=>{const collapsed=section.classList.toggle("collapsed");toggle.setAttribute("aria-expanded",String(!collapsed));});
+  });
+}
+function updateTopEconomy(){
+  const box=document.getElementById("topEconomy"),value=document.getElementById("topEconomyValue"),rate=document.getElementById("topEconomyRate");
+  if(!box||!value||!rate)return;
+  box.classList.remove("hider","seeker");
+  if(!roomModeConnected()){box.style.display="none";return;}
+  const role=roomRole();box.style.display="flex";box.classList.add(role==="hider"?"hider":"seeker");
+  if(role==="hider"){const n=Math.max(0,Number(hiderPowerCharges||0));value.textContent=`⚡ ${n} Power Charge${n===1?"":"s"}`;rate.textContent="";}
+  else{const n=seekerPointsBalance();value.textContent=`${n} Seeker Point${n===1?"":"s"}`;rate.textContent=`${pointsPerMinute}/min`;}
+}
+function settingDraftDirty(id){return settingsDirtyInputs.has(id);}
+function syncSettingValue(id,value){const el=document.getElementById(id);if(!el||settingDraftDirty(id)||document.activeElement===el)return;if(String(el.value)!==String(value))el.value=String(value);}
+function syncSettingChecked(id,value){const el=document.getElementById(id);if(!el||settingDraftDirty(id)||document.activeElement===el)return;el.checked=!!value;}
+function clearSettingDraft(ids){for(const id of ids)settingsDirtyInputs.delete(id);}
+function bindSettingDraftProtection(){
+  document.querySelectorAll('#view-settings input[type="number"]').forEach(el=>el.addEventListener("input",()=>settingsDirtyInputs.add(el.id)));
+  const linked=document.getElementById("firstQuestionOnHideEnd");if(linked)linked.addEventListener("change",()=>settingsDirtyInputs.add(linked.id));
+}
+
 function updateGameDashboard(){
   const card=document.getElementById("currentActionSection");if(!card)return;
   const eyebrow=document.getElementById("currentActionEyebrow"),title=document.getElementById("currentActionTitle"),timer=document.getElementById("currentActionTimer"),detail=document.getElementById("currentActionDetail"),next=document.getElementById("currentActionNext"),secondary=document.getElementById("currentActionSecondary");
-  const controls=document.getElementById("matchControlSection"),points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext"),relocationSection=document.getElementById("relocationGameSection");
+  const controls=document.getElementById("matchControlSection"),points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext");
   const connected=roomModeConnected(),role=connected?roomRole():null,isHider=role==="hider",isSeeker=role==="seeker",sec=currentMatchSeconds(),running=connected?roomMatchRunning():matchRunning;
   card.style.display=connected?"block":"none";
   controls.style.display=connected&&!!window.BigWalkRooms?.isHost?.()?"block":"none";
-  if(relocationSection)relocationSection.style.display=connected?"block":"none";
-  points.style.display=isSeeker?"block":"none";qSection.style.display=isSeeker?"block":"none";
+  points.style.display="none";qSection.style.display=isSeeker?"block":"none";
   const hideRemaining=Math.max(0,Number(hidingSettings.duration||0)-sec);
   if(isSeeker){
     const anyUnlocked=testingUnlockOverride||Object.values(unlockTimes).some(t=>sec>=Number(t));
     if(sec<.01&&!running){qStatus.textContent="Waiting";qNext.textContent=hidingSettings.firstQuestionOnEnd?"First question unlocks when hiding time ends.":`First question unlocks ${formatApproxDuration(unlockTimes.grid)} after the match starts.`;}
     else if(hideRemaining>.01&&hidingSettings.firstQuestionOnEnd&&!testingUnlockOverride){qStatus.textContent="Locked · hiding time";qNext.textContent=`Centerline unlocks when hiding time ends (${formatApproxDuration(hideRemaining)}).`;}
-    else if(relocationState.active){qStatus.textContent="Locked";qNext.textContent="Questions are unavailable during forced relocation.";}
     else if(questionCooldownActive()){qStatus.textContent=`Cooling down · ${formatApproxDuration(questionCooldownRemaining())}`;qNext.textContent=nextQuestionUnlockInfo(sec)+".";}
     else{qStatus.textContent=anyUnlocked?"Ready":"Locked";qNext.textContent=nextQuestionUnlockInfo(sec)+".";}
   }
   card.classList.remove("hider","seeker","urgent");if(isHider)card.classList.add("hider");if(isSeeker)card.classList.add("seeker");
   timer.style.display="none";eyebrow.textContent="CURRENT STATUS";
   const relocationNext=Math.max(0,Number(relocationState.nextAt??relocationSettings.firstAt)-sec);
-  next.textContent=missionState.active?"Relocation · paused":`Next relocation · ${formatApproxDuration(relocationNext)}`;
-  secondary.textContent=isHider?`⚡ ${Math.max(0,Number(hiderPowerCharges||0))} Power Charge${Number(hiderPowerCharges||0)===1?"":"s"}`:isSeeker?`${seekerPointsBalance()} Seeker Point${seekerPointsBalance()===1?"":"s"}`:"—";
+  if(isHider)next.textContent=missionState.active?"Relocation · paused":`Next relocation · ${formatApproxDuration(relocationNext)}`;
+  else if(isSeeker)next.textContent=questionCooldownActive()?`Questions · ${formatApproxDuration(questionCooldownRemaining())}`:nextQuestionUnlockInfo(sec);
+  else next.textContent="No active match";
+  secondary.textContent=isHider?"Hider":"Seeker";
   if(!connected)return;
   if(sec<.01&&!running){title.textContent="Ready to play";detail.textContent=window.BigWalkRooms?.isHost?.()?"Start the match when everyone is ready.":"Waiting for the room host to start the match.";next.textContent="Match not started";return;}
   if(!running){title.textContent="Match paused";detail.textContent="Gameplay timers are paused.";next.textContent="Waiting to resume";return;}
@@ -1393,19 +1505,19 @@ function updateGameDashboard(){
     detail.textContent=isHider?"Get into position before hiding time ends.":"Searching begins when the hiding timer reaches zero.";
     next.textContent=hidingSettings.firstQuestionOnEnd?"First question · at hide end":"First question · separate schedule";return;
   }
-  if(relocationState.active){
+  if(relocationState.active&&isHider){
     card.classList.add("urgent");eyebrow.textContent="CURRENT OBJECTIVE";
     const rem=Math.max(0,Number(relocationState.deadline||sec)-sec);timer.style.display="block";timer.textContent=rem>0?formatTime(rem):"OVERTIME";
-    title.textContent=isHider?"Forced relocation":"Hider relocating";
-    if(isHider&&localRelocationPlan&&!localRelocationPlan.invalid&&!localRelocationPlan.skip&&liveMarker){const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);detail.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)} units from relocation start.`;}
-    else detail.textContent=isHider?"Move to a legal new hiding area and press Ready when the target is met.":"Questions are locked until the Hider finishes relocating.";
+    title.textContent="Forced relocation";
+    if(localRelocationPlan&&!localRelocationPlan.invalid&&!localRelocationPlan.skip&&liveMarker){const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);detail.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)} units from relocation start.`;}
+    else detail.textContent="Move to a legal new hiding area and press Ready when the target is met.";
     next.textContent=rem>0?"Target window active":"Overtime penalty active";return;
   }
   if(missionState.active){
     eyebrow.textContent="CURRENT OBJECTIVE";title.textContent=isHider?"Cross the Zone":"Hider mission active";
     if(isHider&&liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
     else detail.textContent=isHider?"Reach the private purple target area.":"The mission target and Hider progress remain private.";
-    next.textContent="Forced relocation · paused";return;
+    next.textContent=isHider?"Forced relocation · paused":"Mission in progress";return;
   }
   if(isHider&&missionState.available){eyebrow.textContent="OPTIONAL OBJECTIVE";title.textContent="Mission available";detail.textContent="Cross the Zone is ready whenever you want to take it.";return;}
   title.textContent=isHider?"Stay hidden":"Search for the Hider";
@@ -1822,7 +1934,7 @@ async function maybeHostAdvanceRelocation(){
 function updateRelocationUi(){
   const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),status=document.getElementById("relocationStatus"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage"),readyBtn=document.getElementById("relocationReadyBtn");
   if(!section)return;
-  if(!roomModeConnected()||!relocationState.active){section.style.display="none";return;}
+  if(!roomModeConnected()||!isRoomHider()||!relocationState.active){section.style.display="none";return;}
   section.style.display="block";
   readyBtn.style.display="none";readyBtn.disabled=true;readyBtn.textContent="Ready";
   section.classList.toggle("relocationActive",!!relocationState.active);
@@ -1848,12 +1960,6 @@ function updateRelocationUi(){
         readyBtn.textContent=localRelocationPlan.signaled?"Ready — confirming…":"Ready";
         message.textContent=localRelocationPlan.signaled?"Ready confirmed — waiting for the room to schedule the next relocation.":ready?"Minimum move reached. Keep searching if you want, then press Ready once you have a hiding spot.":"Displacement is measured from where this relocation started, not total distance traveled.";
       }
-    }else{
-      target.textContent=`${relocationSettings.minDistance} units minimum`;
-      progress.textContent="Hidden from seekers";
-      if(remaining>0)message.textContent="Questions are locked while the hider relocates.";
-      else if(window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)message.textContent="Room sync module is out of date — hard refresh this browser.";
-      else message.textContent=activeOvertimeReveal()?"Relocation overtime — the hider's last-known 300-unit-diameter area is revealed in red for 2 minutes.":"Relocation overtime — waiting for the Hider snapshot…";
     }
   }else{
     if(missionState.active){
@@ -2009,10 +2115,7 @@ function updateCooldownDisplay(){
   const remain=questionCooldownRemaining();
 
   clock.classList.remove("ready","waiting");
-  if(roomModeConnected()&&relocationState.active){
-    clock.textContent="RELOCATION";clock.classList.add("waiting");
-    status.textContent="Questions are locked while the Hider relocates.";
-  }else if(testingUnlockOverride){
+  if(testingUnlockOverride){
     clock.textContent="BYPASSED";
     clock.classList.add("ready");
     status.textContent="Testing override is active, so the global cooldown is ignored.";
@@ -2033,18 +2136,16 @@ function setSectionLocked(sectionId,unlockAt,noticeId){
   const section=document.getElementById(sectionId);
   const unlocked=questionUnlocked(unlockAt);
   const cooldown=questionCooldownActive();
-  const relocationLock=roomModeConnected()&&!!relocationState.active;
   const roomReadOnly=roomModeConnected()&&!roomCanEditSharedGame();
-  const locked=!unlocked || cooldown || relocationLock || roomReadOnly;
+  const locked=!unlocked || cooldown || roomReadOnly;
 
   section.classList.toggle("locked",locked);
-  section.querySelectorAll("input,select,button").forEach(el=>el.disabled=locked);
+  if(locked){section.classList.add("collapsed");section.querySelector(".questionCardToggle")?.setAttribute("aria-expanded","false");}
+  section.querySelectorAll("input,select,button:not(.questionCardToggle)").forEach(el=>el.disabled=locked);
 
   const notice=document.getElementById(noticeId);
   if(!unlocked){
     notice.textContent=`Locked · unlocks at ${formatTime(unlockAt)}.`;
-  }else if(relocationLock){
-    notice.textContent="Locked during forced relocation.";
   }else if(cooldown){
     notice.textContent="Locked during the global question cooldown.";
   }else if(roomReadOnly){
@@ -2086,18 +2187,10 @@ function updateMilestones(){
     else if(!nextFound){el.classList.add("next");nextFound=true;}
   }
 }
-function updateRuleTimes(){
-  document.getElementById("ruleHideTime").textContent=formatTime(hidingSettings.duration);
-  document.getElementById("ruleGridTime").textContent=formatTime(unlockTimes.grid);
-  document.getElementById("ruleNearestTime").textContent=formatTime(unlockTimes.nearest);
-  document.getElementById("ruleTowerRadiusTime").textContent=formatTime(unlockTimes.towerRadius);
-  document.getElementById("ruleLandmarkTime").textContent=formatTime(unlockTimes.landmark);
-  document.getElementById("ruleMarkerTime").textContent=formatTime(unlockTimes.marker);
-  document.getElementById("ruleCooldownTime").textContent=formatTime(questionCooldownSeconds);
-}
+function updateRuleTimes(){}
 function updateRelocationSettingsInputs(){
   const ids={relocationFirstMinutes:relocationSettings.firstAt/60,relocationIntervalMinutes:relocationSettings.interval/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
-  for(const [id,value] of Object.entries(ids)){const el=document.getElementById(id);if(el)el.value=value;}
+  for(const [id,value] of Object.entries(ids))syncSettingValue(id,value);
 }
 function syncHideTimeControls(){
   const hide=document.getElementById("hideTimeMinutes"),linked=document.getElementById("firstQuestionOnHideEnd"),first=document.getElementById("firstUnlockMinutes"),grid=document.getElementById("gridUnlockMinutes");
@@ -2106,28 +2199,28 @@ function syncHideTimeControls(){
   if(linked.checked){first.value=hide.value;grid.value=hide.value;}
 }
 function updateScheduleInputs(){
-  document.getElementById("hideTimeMinutes").value=hidingSettings.duration/60;
-  document.getElementById("firstQuestionOnHideEnd").checked=hidingSettings.firstQuestionOnEnd!==false;
-  document.getElementById("firstUnlockMinutes").value=unlockTimes.grid/60;
-  document.getElementById("gridUnlockMinutes").value=unlockTimes.grid/60;
-  document.getElementById("nearestUnlockMinutes").value=unlockTimes.nearest/60;
-  document.getElementById("towerRadiusUnlockMinutes").value=unlockTimes.towerRadius/60;
-  document.getElementById("landmarkUnlockMinutes").value=unlockTimes.landmark/60;
-  document.getElementById("markerUnlockMinutes").value=unlockTimes.marker/60;
-  document.getElementById("questionCooldownMinutes").value=questionCooldownSeconds/60;
+  syncSettingValue("hideTimeMinutes",hidingSettings.duration/60);
+  syncSettingChecked("firstQuestionOnHideEnd",hidingSettings.firstQuestionOnEnd!==false);
+  syncSettingValue("firstUnlockMinutes",unlockTimes.grid/60);
+  syncSettingValue("gridUnlockMinutes",unlockTimes.grid/60);
+  syncSettingValue("nearestUnlockMinutes",unlockTimes.nearest/60);
+  syncSettingValue("towerRadiusUnlockMinutes",unlockTimes.towerRadius/60);
+  syncSettingValue("landmarkUnlockMinutes",unlockTimes.landmark/60);
+  syncSettingValue("markerUnlockMinutes",unlockTimes.marker/60);
+  syncSettingValue("questionCooldownMinutes",questionCooldownSeconds/60);
   syncHideTimeControls();
   document.getElementById("scheduleSummary").textContent=`Hiding: ${formatTime(hidingSettings.duration)} · Unlocks: ${formatTime(unlockTimes.grid)} → ${formatTime(unlockTimes.nearest)} → ${formatTime(unlockTimes.towerRadius)} → ${formatTime(unlockTimes.landmark)} → ${formatTime(unlockTimes.marker)} · Cooldown: ${formatTime(questionCooldownSeconds)}`;
 }
 function updateQuestionCostInputs(){
   const ids={costGrid:"grid",costNearest:"nearest",costLandmarkNearest:"landmarkNearest",costMarkerDirection:"markerDirection",costTower500:"tower500",costTower400:"tower400",costTower300:"tower300",costTower250:"tower250",costLandmark500:"landmark500",costLandmark400:"landmark400",costLandmark300:"landmark300",costLandmark200:"landmark200",costLandmark150:"landmark150",costMarker500:"marker500",costMarker400:"marker400",costMarker300:"marker300",costMarker250:"marker250"};
-  for(const [id,key] of Object.entries(ids)){const el=document.getElementById(id);if(el)el.value=String(questionCosts[key]);}
+  for(const [id,key] of Object.entries(ids))syncSettingValue(id,questionCosts[key]);
 }
 function renderMatchTimer(){
   const time=formatTime(currentMatchSeconds());
   document.getElementById("matchTimer").textContent=time;
   document.getElementById("topTimerClock").textContent=time;
   updateLocalRelocation();updateRelocationUi();updateLocalHiderMission();updateMissionUi();
-  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();updateRoomChrome();
+  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();updateTopEconomy();updateRoomChrome();
 
   const status=document.getElementById("timerStatus"),topSub=document.getElementById("topTimerSub");
   if(testingUnlockOverride){status.textContent="Testing override active — all questions unlocked.";topSub.textContent="Testing override";return;}
@@ -2135,8 +2228,8 @@ function renderMatchTimer(){
   if(!matchRunning){status.textContent="Match paused.";topSub.textContent="Paused";return;}
   status.textContent="Match running.";
   if(hidingTimeRemaining()>.01)topSub.textContent="Hiding time";
-  else if(roomModeConnected()&&relocationState.active)topSub.textContent="Forced relocation active";
-  else if(roomModeConnected()&&missionState.active)topSub.textContent="Hider mission active";
+  else if(roomModeConnected()&&relocationState.active&&isRoomHider())topSub.textContent="Forced relocation active";
+  else if(roomModeConnected()&&missionState.active)topSub.textContent=roomRole()==="hider"?"Hider mission active":"Match running";
   else if(questionCooldownActive())topSub.textContent="Questions cooling down";
   else topSub.textContent="Questions ready";
 }
@@ -2786,8 +2879,8 @@ document.getElementById("applyMarkerQuestion").onclick=()=>{
   }
 };
 
-document.getElementById("hideTimeMinutes").addEventListener("input",syncHideTimeControls);
-document.getElementById("firstQuestionOnHideEnd").addEventListener("change",syncHideTimeControls);
+document.getElementById("hideTimeMinutes").addEventListener("input",()=>{syncHideTimeControls();if(document.getElementById("firstQuestionOnHideEnd").checked){settingsDirtyInputs.add("firstUnlockMinutes");settingsDirtyInputs.add("gridUnlockMinutes");}});
+document.getElementById("firstQuestionOnHideEnd").addEventListener("change",()=>{syncHideTimeControls();settingsDirtyInputs.add("firstUnlockMinutes");settingsDirtyInputs.add("gridUnlockMinutes");});
 document.getElementById("buildScheduleBtn").onclick=()=>{
   const linked=document.getElementById("firstQuestionOnHideEnd").checked;
   const hide=+document.getElementById("hideTimeMinutes").value;
@@ -2797,7 +2890,7 @@ document.getElementById("buildScheduleBtn").onclick=()=>{
   const v=document.getElementById("scheduleValidation");v.textContent="";
   if(!Number.isFinite(hide)||hide<0||!Number.isFinite(first)||first<0||!Number.isFinite(interval)||interval<=0){v.textContent="Use a hiding time / first unlock of 0 minutes or more and an interval greater than 0.";return;}
   const vals=[first,first+interval,first+2*interval,first+3*interval,first+4*interval];
-  ["gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes"].forEach((id,i)=>document.getElementById(id).value=vals[i]);
+  ["gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes"].forEach((id,i)=>{document.getElementById(id).value=vals[i];settingsDirtyInputs.add(id);});
   document.getElementById("scheduleSummary").textContent=`Preview: hiding ${formatTime(hide*60)} · questions ${vals.map(m=>formatTime(m*60)).join(" → ")}`;
 };
 document.getElementById("applyScheduleBtn").onclick=()=>{
@@ -2816,6 +2909,7 @@ document.getElementById("applyScheduleBtn").onclick=()=>{
   hidingSettings={duration:hideMinutes*60,firstQuestionOnEnd:linked};
   unlockTimes={grid:vals[0]*60,nearest:vals[1]*60,towerRadius:vals[2]*60,landmark:vals[3]*60,marker:vals[4]*60};
   questionCooldownSeconds=cooldownMinutes*60;
+  clearSettingDraft(["hideTimeMinutes","firstQuestionOnHideEnd","firstUnlockMinutes","unlockIntervalMinutes","gridUnlockMinutes","nearestUnlockMinutes","towerRadiusUnlockMinutes","landmarkUnlockMinutes","markerUnlockMinutes","questionCooldownMinutes"]);
   updateScheduleInputs();renderMatchTimer();notifyRoomGameStateChanged();
   v.style.color="#9ef1c2";v.textContent="Timing settings applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
@@ -2825,7 +2919,7 @@ document.getElementById("applyQuestionCostsBtn").onclick=()=>{
   const ids={costGrid:"grid",costNearest:"nearest",costLandmarkNearest:"landmarkNearest",costMarkerDirection:"markerDirection",costTower500:"tower500",costTower400:"tower400",costTower300:"tower300",costTower250:"tower250",costLandmark500:"landmark500",costLandmark400:"landmark400",costLandmark300:"landmark300",costLandmark200:"landmark200",costLandmark150:"landmark150",costMarker500:"marker500",costMarker400:"marker400",costMarker300:"marker300",costMarker250:"marker250"};
   const nextCosts={};
   for(const [id,key] of Object.entries(ids)){const value=+document.getElementById(id).value;if(!Number.isFinite(value)||value<0||!Number.isInteger(value)){v.textContent="Question prices must be whole numbers of 0 points or more.";return;}nextCosts[key]=value;}
-  questionCosts=nextCosts;updateQuestionCostInputs();updateQuestionEconomy();notifyRoomGameStateChanged();
+  questionCosts=nextCosts;clearSettingDraft(Object.keys(ids));updateQuestionCostInputs();updateQuestionEconomy();notifyRoomGameStateChanged();
   v.style.color="#9ef1c2";v.textContent="Question prices applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 document.getElementById("testUnlockOverride").onchange=e=>{testingUnlockOverride=e.target.checked;renderMatchTimer();};
@@ -2835,7 +2929,7 @@ soundVolumeEl.value=String(Math.round(soundSettings.volume*100));
 soundVolumeValueEl.textContent=`${Math.round(soundSettings.volume*100)}%`;
 soundEnabledEl.onchange=e=>{soundSettings.enabled=!!e.target.checked;saveSoundSettings();if(soundSettings.enabled)ensureGameAudioContext();};
 soundVolumeEl.oninput=e=>{soundSettings.volume=Math.max(0,Math.min(1,Number(e.target.value)/100));soundVolumeValueEl.textContent=`${Math.round(soundSettings.volume*100)}%`;saveSoundSettings();};
-document.getElementById("testSoundBtn").onclick=()=>playGameSound("questionUnlock");
+document.getElementById("testSoundBtn").onclick=()=>{showGameCue("questionUnlock","Example visual cue for a gameplay sound.");playGameSound("questionUnlock");};
 document.addEventListener("pointerdown",()=>ensureGameAudioContext(),{once:true,capture:true});
 document.addEventListener("keydown",()=>ensureGameAudioContext(),{once:true,capture:true});
 document.getElementById("missionStartBtn").onclick=async()=>{
@@ -2869,7 +2963,8 @@ document.getElementById("applyRelocationSettingsBtn").onclick=()=>{
   if(skipBelow>minDistance){v.textContent="Skip-below distance cannot be larger than the normal relocation target.";return;}
   relocationSettings={firstAt:first*60,interval:interval*60,window:windowMin*60,minDistance,skipBelow};
   if(!relocationState.active&&!missionState.active){relocationState.nextAt=relocationState.index===0?relocationSettings.firstAt:currentMatchSeconds()+relocationSettings.interval;}
-  resetLocalRelocationPlan();renderMatchTimer();notifyRoomGameStateChanged();
+  clearSettingDraft(["relocationFirstMinutes","relocationIntervalMinutes","relocationWindowMinutes","relocationMinDistance","relocationSkipBelow"]);
+  resetLocalRelocationPlan();updateRelocationSettingsInputs();renderMatchTimer();notifyRoomGameStateChanged();
   v.style.color="#9ef1c2";v.textContent="Relocation settings applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
 };
 
@@ -2950,7 +3045,7 @@ function initializeMapApp(){
   if(appInitialized || !img.naturalWidth || !img.naturalHeight)return;
   appInitialized=true;
   canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
-  populate();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();
+  populate();initializeQuestionCollapsibles();bindSettingDraftProtection();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();
   setToolMode("pan");renderMatchTimer();startTimerLoop();draw();fitMap();
   checkForSiteUpdate();
   setInterval(checkForSiteUpdate,300000);
