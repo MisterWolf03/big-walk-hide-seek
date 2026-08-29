@@ -4,7 +4,7 @@ using BepInEx.Logging;
 using BepInEx.Unity.IL2CPP;
 using UnityEngine;
 
-[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.4")]
+[BepInPlugin("com.bigwalkhideseek.ingame", "Big Walk Hide + Seek", "0.0.5")]
 public class Plugin : BasePlugin
 {
     internal static ManualLogSource Logger;
@@ -12,7 +12,7 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        Logger.LogInfo("Big Walk Hide + Seek 0.0.4 loaded.");
+        Logger.LogInfo("Big Walk Hide + Seek 0.0.5 loaded.");
         Logger.LogInfo("Press F7 to toggle the prototype overlay.");
         AddComponent<HideSeekOverlay>();
     }
@@ -46,9 +46,10 @@ public class HideSeekOverlay : MonoBehaviour
 
         if (overlayOpen)
         {
-            // Big Walk normally owns the cursor. Keep our UI cursor available
-            // while the Hide + Seek screen is open in case another game system
-            // tries to relock it.
+            // Keep our cursor available without switching Big Walk into its
+            // full UI mode. The full WorldManager UI switch opens the game's
+            // native menu, so this build intentionally uses only the lower-
+            // level ControlsManager menu-input gate.
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
         }
@@ -66,38 +67,24 @@ public class HideSeekOverlay : MonoBehaviour
             previousCursorVisible = Cursor.visible;
             previousCursorLock = Cursor.lockState;
 
-            EnterBigWalkUiMode();
+            EnterOverlayInputMode();
 
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            Plugin.Logger.LogInfo("Hide + Seek overlay opened; Big Walk UI mode enabled.");
+            Plugin.Logger.LogInfo("Hide + Seek overlay opened; ControlsManager menu mode enabled.");
         }
         else
         {
-            ExitBigWalkUiMode();
+            ExitOverlayInputMode();
 
-            // Keep the old cursor state as a fallback. Big Walk's own
-            // SetToGameMode/SetLocked calls should normally own this.
             Cursor.visible = previousCursorVisible;
             Cursor.lockState = previousCursorLock;
-            Plugin.Logger.LogInfo("Hide + Seek overlay closed; Big Walk game mode restored.");
+            Plugin.Logger.LogInfo("Hide + Seek overlay closed; ControlsManager menu mode released.");
         }
     }
 
-    private static void EnterBigWalkUiMode()
+    private static void EnterOverlayInputMode()
     {
-        // These are Big Walk's own menu/input switches discovered in its
-        // generated Assembly-CSharp interop. Using them should disable player
-        // look/movement the same way the game's native menus do.
-        try
-        {
-            WorldManager.SetToUIMode();
-        }
-        catch (Exception ex)
-        {
-            Plugin.Logger.LogWarning($"WorldManager.SetToUIMode failed: {ex.Message}");
-        }
-
         try
         {
             ControlsManager.SetMenuMode(true);
@@ -117,7 +104,7 @@ public class HideSeekOverlay : MonoBehaviour
         }
     }
 
-    private static void ExitBigWalkUiMode()
+    private static void ExitOverlayInputMode()
     {
         try
         {
@@ -126,15 +113,6 @@ public class HideSeekOverlay : MonoBehaviour
         catch (Exception ex)
         {
             Plugin.Logger.LogWarning($"ControlsManager.SetMenuMode(false) failed: {ex.Message}");
-        }
-
-        try
-        {
-            WorldManager.SetToGameMode();
-        }
-        catch (Exception ex)
-        {
-            Plugin.Logger.LogWarning($"WorldManager.SetToGameMode failed: {ex.Message}");
         }
 
         try
@@ -182,7 +160,7 @@ public class HideSeekOverlay : MonoBehaviour
         GUILayout.Label("Overlay foundation is working.", bodyStyle);
         GUILayout.Space(12f);
         GUILayout.Label(
-            "This build now uses Big Walk's own UI mode while the overlay is open. The camera and player controls should stop reacting until the overlay closes.",
+            "Diagnostic build: this uses only Big Walk's lower-level menu input gate. The native Big Walk menu should NOT open behind this overlay.",
             bodyStyle
         );
 
