@@ -957,6 +957,14 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.3.0 preview — Impossible Route reroll fix</h4>
+        <ul>
+          <li>Impossible Route now generates a compact connected replacement patch instead of requiring a second sector roughly 90 degrees away.</li>
+          <li>The replacement still cannot be closer than the original target and prefers legal cells outside the rejected purple zone.</li>
+          <li>If the original target already covers nearly the whole far side, the reroll can use a smaller shifted far-side patch rather than producing no target.</li>
+        </ul>
+      </div>
+      <div class="changeEntry">
         <h4>v1.3.0 preview — Impossible Route fallback</h4>
         <ul>
           <li>Cross the Zone now offers one guarded Impossible Route reroll during the first 90 seconds and only within 20 units of the mission start.</li>
@@ -1914,23 +1922,46 @@ function buildCrossZoneMissionPlan(start,opts={}){
     if(targetCells.length<4)targetCells=crossZoneCellsForAngle(cells,start,centerAngle,minDistance,Math.PI/2);
   }else{
     const rejected=rerollFrom.targetKeys instanceof Set?rerollFrom.targetKeys:new Set();
-    const rejectedAngle=Number(rerollFrom.centerAngle);
-    const centerCandidates=cells.filter(c=>c.distance>=minDistance).sort((x,y)=>y.distance-x.distance);
+    const rejectedCells=Array.isArray(rerollFrom.targetCells)?rerollFrom.targetCells:[];
+    const rcx=rejectedCells.length?rejectedCells.reduce((sum,c)=>sum+Number(c.x),0)/rejectedCells.length:Number(start.x);
+    const rcy=rejectedCells.length?rejectedCells.reduce((sum,c)=>sum+Number(c.y),0)/rejectedCells.length:Number(start.y);
+    const farCells=cells.filter(c=>c.distance>=minDistance);
+    const outsideRejected=farCells.filter(c=>!rejected.has(c.key));
+    const pools=[];
+    if(outsideRejected.length>=4)pools.push(outsideRejected);
+    pools.push(farCells);
     let best=null;
-    for(const c of centerCandidates){
-      const angle=Math.atan2(c.y-start.y,c.x-start.x);
-      if(Number.isFinite(rejectedAngle)&&missionAngleDelta(angle,rejectedAngle)<Math.PI/2)continue;
-      for(const halfAngle of [Math.PI/3,Math.PI/4,Math.PI/6]){
-        const candidate=crossZoneCellsForAngle(cells,start,angle,minDistance,halfAngle);
-        if(candidate.length<3)continue;
-        const overlap=candidate.filter(cell=>rejected.has(cell.key)).length/candidate.length;
-        if(overlap>.25)continue;
-        const avg=candidate.reduce((sum,cell)=>sum+cell.distance,0)/candidate.length;
-        const score=avg+(1-overlap)*maxDistance*.1;
-        if(!best||score>best.score)best={angle,cells:candidate,score};
+    for(const pool of pools){
+      if(!pool.length)continue;
+      const byKey=new Map(pool.map(c=>[c.key,c]));
+      const seeds=[...pool].sort((a,b)=>Math.hypot(b.x-rcx,b.y-rcy)-Math.hypot(a.x-rcx,a.y-rcy));
+      for(const seed of seeds){
+        const queue=[seed],seen=new Set([seed.key]),patch=[];
+        while(queue.length&&patch.length<14){
+          const cur=queue.shift();patch.push(cur);
+          const neighbors=[
+            relocationCellKey(cur.x+Number(region.step||25),cur.y),
+            relocationCellKey(cur.x-Number(region.step||25),cur.y),
+            relocationCellKey(cur.x,cur.y+Number(region.step||25)),
+            relocationCellKey(cur.x,cur.y-Number(region.step||25))
+          ].map(key=>byKey.get(key)).filter(Boolean)
+           .sort((a,b)=>Math.hypot(b.x-rcx,b.y-rcy)-Math.hypot(a.x-rcx,a.y-rcy));
+          for(const n of neighbors){if(!seen.has(n.key)){seen.add(n.key);queue.push(n);}}
+        }
+        if(patch.length<4)continue;
+        const pcx=patch.reduce((sum,c)=>sum+c.x,0)/patch.length,pcy=patch.reduce((sum,c)=>sum+c.y,0)/patch.length;
+        const shift=Math.hypot(pcx-rcx,pcy-rcy);
+        if(shift<Number(region.step||25)*1.25&&farCells.length>6)continue;
+        const avgDistance=patch.reduce((sum,c)=>sum+c.distance,0)/patch.length;
+        const score=shift+avgDistance*.15+(pool===outsideRejected?maxDistance*.25:0);
+        if(!best||score>best.score)best={cells:patch,cx:pcx,cy:pcy,score};
       }
+      if(best)break;
     }
-    if(best){centerAngle=best.angle;targetCells=best.cells;}
+    if(best){
+      centerAngle=Math.atan2(best.cy-start.y,best.cx-start.x);
+      targetCells=best.cells;
+    }
   }
 
   if(!targetCells.length)return {index:Number(missionState.index||0),token:String(missionState.token||""),invalid:true,noComparableAlternate:!!rerollFrom};
