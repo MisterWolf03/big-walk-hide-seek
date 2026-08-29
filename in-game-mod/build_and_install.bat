@@ -34,7 +34,7 @@ if not exist "%PROFILE%\BepInEx\core\BepInEx.Unity.IL2CPP.dll" (
   exit /b 1
 )
 
-for %%F in (Assembly-CSharp.dll UnityEngine.CoreModule.dll UnityEngine.IMGUIModule.dll UnityEngine.InputLegacyModule.dll UnityEngine.TextRenderingModule.dll) do (
+for %%F in (Assembly-CSharp.dll UnityEngine.CoreModule.dll UnityEngine.IMGUIModule.dll UnityEngine.InputLegacyModule.dll UnityEngine.TextRenderingModule.dll UnityEngine.ImageConversionModule.dll UnityEngine.PhysicsModule.dll) do (
   if not exist "%PROFILE%\BepInEx\interop\%%F" (
     echo ERROR: Required BepInEx interop file is missing:
     echo   %PROFILE%\BepInEx\interop\%%F
