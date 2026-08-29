@@ -79,7 +79,7 @@ if errorlevel 1 goto :copyfail
 if not exist "%RUNTIMEDEST%\updater-config.json" (
   >"%RUNTIMEDEST%\updater-config.json" echo {
   >>"%RUNTIMEDEST%\updater-config.json" echo   "enabled": true,
-  >>"%RUNTIMEDEST%\updater-config.json" echo   "manifestUrl": "",
+  >>"%RUNTIMEDEST%\updater-config.json" echo   "manifestUrl": "https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/latest.json",
   >>"%RUNTIMEDEST%\updater-config.json" echo   "bearerToken": "",
   >>"%RUNTIMEDEST%\updater-config.json" echo   "timeoutSeconds": 4
   >>"%RUNTIMEDEST%\updater-config.json" echo }
@@ -94,11 +94,9 @@ echo.
 echo Updateable Core:
 echo   %RUNTIMEDEST%\BigWalkHideSeek.Core.dll
 echo.
-echo This is the one-time Loader/Core migration build.
-echo The private update URL is intentionally blank until we choose the private host.
+echo Automatic Core updates are enabled for this installation.
 echo.
 echo Launch Big Walk with Start modded and press F7.
-echo The overlay should say AUTO-UPDATE CORE TEST v0.0.6.
 echo.
 pause
 exit /b 0
