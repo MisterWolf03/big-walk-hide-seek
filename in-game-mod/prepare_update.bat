@@ -11,7 +11,7 @@ if not defined PROFILE (
 )
 
 set "COREURL=%~1"
-if not defined COREURL set "COREURL=REPLACE_WITH_PRIVATE_CORE_URL"
+if not defined COREURL set "COREURL=https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Core.dll"
 
 where dotnet >nul 2>nul
 if errorlevel 1 (
@@ -50,6 +50,6 @@ echo.
 echo Version: %VERSION%
 echo SHA-256: %HASH%
 echo.
-echo Once we choose the private host, these are the only two files that need publishing.
+echo Send the Core DLL to ChatGPT to publish it to the update feed.
 echo.
 pause
