@@ -370,7 +370,16 @@ async function connectToRoom(code, name, role, created){
 
   const memberRef = dbMod.ref(db, `rooms/${code}/members/${user.uid}`);
   if(!created){
-    await dbMod.update(memberRef, {name,role,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
+    const existingSnap=await dbMod.get(memberRef);
+    if(existingSnap.exists()){
+      const existing=existingSnap.val()||{};
+      const updates={name,lastSeen:dbMod.serverTimestamp()};
+      if(existing.role===role)updates.role=role;
+      else updates.roleView=role;
+      await dbMod.update(memberRef,updates);
+    }else{
+      await dbMod.update(memberRef,{name,role,joinedAt:dbMod.serverTimestamp(),lastSeen:dbMod.serverTimestamp()});
+    }
   }
   await dbMod.onDisconnect(memberRef).remove();
 
