@@ -157,7 +157,8 @@
   .presetBox strong{font-size:12px}
   .summaryLine{font-size:12px;color:#dbe2ea;margin-top:7px}
   .cooldownDisplay{
-    text-align:center;font-size:30px;font-weight:850;letter-spacing:.6px;margin:3px 0 5px
+    display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:850;letter-spacing:.4px;
+    padding:6px 9px;border-radius:999px;border:1px solid #435064;margin:1px 0 7px
   }
   .cooldownDisplay.ready{color:#9ef1c2}
   .cooldownDisplay.waiting{color:#ffe391}
@@ -191,6 +192,39 @@
     border:1px solid #394350;background:#171b21;border-radius:999px;padding:5px 8px
   }
   #roomTopStatus.connected{color:#baf6cf;border-color:#38654b;background:#17271e}
+  #roomTopStatus.hider{color:#efceff;border-color:#6e4f7d;background:#281b30}
+  #roomTopStatus.seeker{color:#cbe3ff;border-color:#4e6480;background:#172535}
+  .objectiveCard{border-color:#49586a;background:linear-gradient(180deg,#222b35,#1c232c);padding:14px}
+  .objectiveCard.hider{border-color:#6e4f7d;background:linear-gradient(180deg,#2a2032,#211a28)}
+  .objectiveCard.seeker{border-color:#4e6480;background:linear-gradient(180deg,#1c2a39,#19232f)}
+  .objectiveCard.urgent{border-color:#9a5960;background:linear-gradient(180deg,#342126,#281a1d)}
+  .objectiveEyebrow{font-size:10px;font-weight:900;letter-spacing:1.2px;color:#aeb8c5;text-transform:uppercase}
+  .objectiveTitle{font-size:25px;font-weight:900;line-height:1.08;margin-top:5px}
+  .objectiveTimer{font-size:38px;font-weight:900;letter-spacing:1px;margin:7px 0 3px;color:#ffd8d8}
+  .objectiveMeta{display:flex;gap:7px;flex-wrap:wrap;margin-top:11px}
+  .statusChip{font-size:11px;font-weight:800;padding:5px 8px;border:1px solid #435064;border-radius:999px;background:#171d25;color:#dbe3ec}
+  .compactSection{padding:10px 12px}
+  .compactSection h3{margin-bottom:7px}
+  .secondaryTimer{display:none!important}
+  .moreGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .moreGrid button{text-align:left;padding:12px}
+  .moreGrid b{display:block;font-size:13px;margin-bottom:3px}
+  .moreGrid span{display:block;font-size:11px;color:var(--muted);line-height:1.3}
+  .questionCard.locked>label,.questionCard.locked>select,.questionCard.locked>input,.questionCard.locked>button,.questionCard.locked>p,.questionCard.locked>.validation,.questionCard.locked>div:not(.questionCost):not(.lockNotice){display:none!important}
+  .questionCard.locked{padding-bottom:9px}
+  .questionCard.locked .lockNotice{margin-bottom:0}
+  .settingsGroup{background:var(--panel2);border:1px solid #303947;border-radius:11px;margin-bottom:9px;overflow:hidden}
+  .settingsGroup>summary{list-style:none;cursor:pointer;padding:12px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;font-weight:850}
+  .settingsGroup>summary::-webkit-details-marker{display:none}
+  .settingsGroup>summary:after{content:'＋';font-size:17px;color:#aeb8c5}
+  .settingsGroup[open]>summary:after{content:'−'}
+  .settingsGroup[open]>summary{border-bottom:1px solid #303947}
+  .settingsHint{font-size:10px;font-weight:600;color:var(--muted);margin-left:auto}
+  .settingsBody{padding:12px}
+  .historyGroup{background:var(--panel2);border:1px solid #303947;border-radius:11px;margin-bottom:11px;overflow:hidden}
+  .historyGroup>summary{cursor:pointer;padding:11px 12px;font-size:13px;font-weight:800}
+  .historyBody{padding:0 12px 12px}
+  #liveLocationSection.liveConnected .liveLocationExtra{display:none}
   .roomStatus{
     margin-bottom:10px;padding:8px 10px;border:1px solid #394350;border-radius:9px;
     background:#171b21;color:#cbd3dd;font-size:12px;line-height:1.4
@@ -232,15 +266,12 @@
 <body>
 
 <div id="topbar">
-  <div id="brand">BIG WALK HIDE + SEEK</div>
+  <div id="brand">BIG WALK H+S</div>
   <div id="tabs">
-    <button class="tabBtn" data-tab="room">Room</button>
     <button class="tabBtn active" data-tab="game">Game</button>
-    <button class="tabBtn" data-tab="tools">Map Tools</button>
     <button class="tabBtn" data-tab="questions">Questions</button>
-    <button class="tabBtn" data-tab="rules">Rules</button>
-    <button class="tabBtn" data-tab="settings">Settings</button>
-    <button class="tabBtn" data-tab="changelog">Changelog</button>
+    <button class="tabBtn" data-tab="tools">Map</button>
+    <button class="tabBtn" data-tab="more">More</button>
   </div>
   <div id="roomTopStatus">Offline</div>
   <div id="topTimer">
@@ -287,6 +318,18 @@
   </div>
 
   <div id="panel">
+
+    <div id="view-more" class="panelView">
+      <div class="panelHeader"><h2>More</h2><button class="closePanel">Hide</button></div>
+      <section>
+        <div class="moreGrid">
+          <button data-open-view="room"><b>Room</b><span>Players, room code, connection</span></button>
+          <button data-open-view="rules"><b>Rules</b><span>Game rules and timing reference</span></button>
+          <button data-open-view="settings"><b>Settings</b><span>Timing, relocation, map, sound</span></button>
+          <button data-open-view="changelog"><b>Changelog</b><span>Preview and release history</span></button>
+        </div>
+      </section>
+    </div>
 
     <div id="view-room" class="panelView">
       <div class="panelHeader"><h2>Room <span class="small">v1.3.0 preview</span></h2><button class="closePanel">Hide</button></div>
@@ -343,74 +386,78 @@
     <div id="view-game" class="panelView active">
       <div class="panelHeader"><h2>Game</h2><button class="closePanel">Hide</button></div>
 
-      <section>
-        <h3>Match timer</h3>
-        <div class="timerBig" id="matchTimer">00:00</div>
+      <section id="currentActionSection" class="objectiveCard">
+        <div class="objectiveEyebrow" id="currentActionEyebrow">CURRENT STATUS</div>
+        <div class="objectiveTitle" id="currentActionTitle">Join a room</div>
+        <div class="objectiveTimer" id="currentActionTimer" style="display:none">00:00</div>
+        <div id="currentActionDetail" class="small" style="margin-top:6px">Connect to a shared room to begin.</div>
+        <div class="objectiveMeta">
+          <span class="statusChip" id="currentActionNext">Next event · —</span>
+          <span class="statusChip" id="currentActionSecondary">—</span>
+        </div>
+      </section>
+
+      <section id="matchControlSection" class="compactSection">
+        <h3>Match controls</h3>
+        <div id="matchTimer" style="display:none">00:00</div>
         <div class="row">
           <button class="primary" id="startMatchBtn">Start match</button>
           <button id="pauseMatchBtn" disabled>Pause</button>
         </div>
         <button class="danger" id="resetMatchBtn" style="margin-top:8px">Reset match</button>
-        <div id="timerStatus" class="miniStatus">Start the match to begin the unlock schedule.</div>
+        <div id="timerStatus" class="miniStatus">Start the match when everyone is ready.</div>
       </section>
 
-      <section>
+      <section id="seekerPointsSection" class="compactSection">
         <h3>Seeker points</h3>
-        <div class="pointsBig" id="seekerPointsBalance">0</div>
+        <div class="metric"><b>Available</b><span id="seekerPointsBalance">0</span></div>
         <div class="metric"><b>Earn rate</b><span id="seekerPointsRate">+1 point / minute</span></div>
-        <div class="metric"><b>Total earned</b><span id="seekerPointsEarned">0</span></div>
-        <div class="metric"><b>Total spent</b><span id="seekerPointsSpent">0</span></div>
+        <div class="metric"><b>Earned / spent</b><span><span id="seekerPointsEarned">0</span> / <span id="seekerPointsSpent">0</span></span></div>
         <div id="questionPointsStatus" class="miniStatus"></div>
-        <p class="small">Points accrue only from match time. More precise questions cost more, so seekers can spend now or save for stronger information later.</p>
       </section>
 
       <section id="relocationGameSection">
         <h3>Forced relocation</h3>
-        <div class="relocationBig" id="relocationHeadline">25:00</div>
-        <div class="metric"><b>Status</b><span id="relocationStatus">Waiting</span></div>
+        <div class="relocationBig secondaryTimer" id="relocationHeadline">ACTIVE</div>
+        <div class="metric"><b>Status</b><span id="relocationStatus">Relocation in progress</span></div>
         <div class="metric"><b>Minimum move</b><span id="relocationTarget">250 units</span></div>
         <div class="metric"><b>Progress</b><span id="relocationProgress">—</span></div>
-        <div id="relocationMessage" class="small" style="margin-top:8px">The first relocation begins at 25:00.</div>
+        <div id="relocationMessage" class="small" style="margin-top:8px"></div>
         <button class="primary" id="relocationReadyBtn" style="display:none;margin-top:8px">Ready</button>
       </section>
 
-      <section id="missionGameSection">
+      <section id="missionGameSection" style="display:none">
         <h3>Hider mission</h3>
-        <div class="missionBig" id="missionHeadline">10:00</div>
-        <div class="metric"><b>Status</b><span id="missionStatus">Waiting</span></div>
+        <div class="missionBig" id="missionHeadline">AVAILABLE</div>
+        <div class="metric"><b>Status</b><span id="missionStatus">Optional</span></div>
         <div class="metric"><b>Mission</b><span id="missionType">Cross the Zone</span></div>
         <div class="metric"><b>Progress</b><span id="missionProgress">—</span></div>
         <div class="metric"><b>Power Charges</b><span class="powerCharge" id="hiderPowerCharges">0</span></div>
-        <div id="missionMessage" class="small" style="margin-top:8px">First mission becomes available at 10:00.</div>
+        <div id="missionMessage" class="small" style="margin-top:8px"></div>
         <button class="primary" id="missionStartBtn" style="display:none;margin-top:8px">Start mission</button>
       </section>
 
-      <section>
-        <h3>Question unlocks</h3>
-        <div class="milestones">
-          <div id="msGrid" class="milestone">10:00 · Centerline</div>
-          <div id="msNearest" class="milestone">20:00 · Nearest tower</div>
-          <div id="msTowerRadius" class="milestone">30:00 · Tower radius</div>
-          <div id="msLandmark" class="milestone">40:00 · Landmark questions</div>
-          <div id="msMarker" class="milestone">50:00 · Marker questions</div>
-        </div>
+      <section id="questionNextSection" class="compactSection">
+        <h3>Questions</h3>
+        <div class="metric"><b>Status</b><span id="gameQuestionStatus">—</span></div>
+        <div id="gameQuestionNext" class="small" style="margin-top:7px">Question schedule has not started.</div>
+        <button data-open-view="questions" style="margin-top:8px">Open Questions</button>
       </section>
-
     </div>
 
     <div id="view-tools" class="panelView">
-      <div class="panelHeader"><h2>Map Tools</h2><button class="closePanel">Hide</button></div>
+      <div class="panelHeader"><h2>Map</h2><button class="closePanel">Hide</button></div>
 
-      <section>
+      <section id="liveLocationSection">
         <h3>Live game location</h3>
         <div class="metric"><b>Status</b><span id="liveLocationStatus">Disconnected</span></div>
         <div class="metric"><b>Game coordinates</b><span id="liveLocationCoords">—</span></div>
-        <div class="metric"><b>Altitude</b><span id="liveLocationAltitude">—</span></div>
+        <div class="metric liveLocationExtra"><b>Altitude</b><span id="liveLocationAltitude">—</span></div>
         <div class="row" style="margin-top:9px">
           <button id="liveLocationBtn" class="primary">Connect live location</button>
         </div>
         <div id="liveLocationMessage" class="miniStatus"></div>
-        <p class="small">Requires BigWalkLivePosition v0.2.1 running in your modded game. The site reads only your local player position from 127.0.0.1. On the hosted site, your browser may ask for permission to access the loopback/local network.</p>
+        <p class="small liveLocationExtra">Requires BigWalkLivePosition v0.2.1 running in your modded game. The site reads only your local player position from 127.0.0.1. On the hosted site, your browser may ask for permission to access the loopback/local network.</p>
       </section>
 
       <section>
@@ -588,14 +635,16 @@
         <div id="markerQuestionValidation" class="validation"></div>
       </section>
 
-      <section>
-        <h3>Question history</h3>
-        <ol id="history"></ol>
-        <div class="row" style="margin-top:10px">
-          <button id="undoBtn">Undo question</button>
-          <button class="danger" id="clearQuestionsBtn">Clear questions</button>
+      <details class="historyGroup">
+        <summary>Question history</summary>
+        <div class="historyBody">
+          <ol id="history"></ol>
+          <div class="row" style="margin-top:10px">
+            <button id="undoBtn">Undo question</button>
+            <button class="danger" id="clearQuestionsBtn">Clear questions</button>
+          </div>
         </div>
-      </section>
+      </details>
     </div>
 
     <div id="view-rules" class="panelView">
@@ -628,8 +677,9 @@
     <div id="view-settings" class="panelView">
       <div class="panelHeader"><h2>Settings</h2><button class="closePanel">Hide</button></div>
 
-      <section>
-        <h3>Question timing</h3>
+      <details class="settingsGroup">
+        <summary><span>Question timing</span><span class="settingsHint">Unlock schedule + cooldown</span></summary>
+        <div class="settingsBody">
         <div class="presetBox">
           <strong>Quick schedule builder</strong>
           <div class="scheduleGrid" style="margin-top:9px">
@@ -669,10 +719,12 @@
         <button class="primary" id="applyScheduleBtn" style="margin-top:8px">Apply timing settings</button>
         <div id="scheduleValidation" class="validation"></div>
         <div id="scheduleSummary" class="summaryLine"></div>
-      </section>
+        </div>
+      </details>
 
-      <section>
-        <h3>Forced relocation</h3>
+      <details class="settingsGroup">
+        <summary><span>Forced relocation</span><span class="settingsHint">Cadence + movement target</span></summary>
+        <div class="settingsBody">
         <div class="scheduleGrid">
           <label>First relocation (min)
             <input id="relocationFirstMinutes" type="number" min="1" step="1" value="25">
@@ -693,10 +745,12 @@
         <button class="primary" id="applyRelocationSettingsBtn" style="margin-top:8px">Apply relocation settings</button>
         <div id="relocationSettingsValidation" class="validation"></div>
         <p class="small">The hider must end at least the target displacement from where relocation began. To avoid forcing edge-of-zone hiding, the target is capped at roughly 80% of the maximum displacement available in the connected legal search area; extremely cramped areas skip relocation.</p>
-      </section>
+        </div>
+      </details>
 
-      <section>
-        <h3>Map display</h3>
+      <details class="settingsGroup">
+        <summary><span>Map display</span><span class="settingsHint">Grid, towers, landmarks</span></summary>
+        <div class="settingsBody">
         <div class="row">
           <button id="fitBtn">Fit map</button>
           <button id="gridBtn">Hide grid</button>
@@ -705,10 +759,12 @@
           <button id="towerBtn">Hide towers</button>
           <button id="landmarkBtn">Hide landmarks</button>
         </div>
-      </section>
+        </div>
+      </details>
 
-      <section>
-        <h3>Sound</h3>
+      <details class="settingsGroup">
+        <summary><span>Sound</span><span class="settingsHint">Volume + gameplay cues</span></summary>
+        <div class="settingsBody">
         <label><input id="soundEnabled" type="checkbox" style="width:auto;margin-right:6px" checked> Sound effects</label>
         <label>Volume
           <input id="soundVolume" type="range" min="0" max="100" step="5" value="60">
@@ -716,28 +772,45 @@
         <div class="metric"><b>Output level</b><span id="soundVolumeValue">60%</span></div>
         <button id="testSoundBtn" style="margin-top:8px">Test sound</button>
         <p class="small">Gameplay cues are generated locally with Web Audio. After a refresh, your browser may require one click before it allows sound.</p>
-      </section>
+        </div>
+      </details>
 
-      <section>
-        <h3>Development / testing</h3>
+      <details class="settingsGroup">
+        <summary><span>Development / testing</span><span class="settingsHint">Testing-only controls</span></summary>
+        <div class="settingsBody">
         <label><input id="testUnlockOverride" type="checkbox" style="width:auto;margin-right:6px"> Unlock all questions for testing</label>
         <p class="small">Does not change the match timer.</p>
-      </section>
+        </div>
+      </details>
 
-      <section>
-        <h3>Tower data</h3>
+      <details class="settingsGroup">
+        <summary><span>Tower data</span><span class="settingsHint">Reference coordinates</span></summary>
+        <div class="settingsBody">
         <div class="towerLegend" id="towerLegend"></div>
-      </section>
+        </div>
+      </details>
 
-      <section>
-        <h3>Landmark data</h3>
+      <details class="settingsGroup">
+        <summary><span>Landmark data</span><span class="settingsHint">Reference coordinates</span></summary>
+        <div class="settingsBody">
         <div class="towerLegend" id="landmarkLegend"></div>
-      </section>
+        </div>
+      </details>
     </div>
 
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.3.0 preview — UI organization pass</h4>
+        <ul>
+          <li>Reduced the primary navigation to Game, Questions, Map, and More.</li>
+          <li>Added role-aware current-objective dashboards and reduced competing countdowns.</li>
+          <li>Upcoming events now use compact approximate timing; active forced relocation is the only large contextual countdown.</li>
+          <li>Locked question cards collapse automatically, question history is collapsible, and Settings categories are expandable.</li>
+          <li>Connected live-location details collapse to a compact status card.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.3.0 preview — Hider missions</h4>
         <ul>
@@ -1160,6 +1233,66 @@ function formatTime(totalSeconds){
   const m=Math.floor(totalSeconds/60),s=totalSeconds%60;
   return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
+function formatApproxDuration(totalSeconds){
+  totalSeconds=Math.max(0,Number(totalSeconds)||0);
+  if(totalSeconds<=1)return "now";
+  if(totalSeconds<60)return "<1 min";
+  const m=Math.max(1,Math.ceil(totalSeconds/60));
+  return `~${m} min`;
+}
+function nextQuestionUnlockInfo(sec=currentMatchSeconds()){
+  const list=[[unlockTimes.grid,"Centerline"],[unlockTimes.nearest,"Nearest tower"],[unlockTimes.towerRadius,"Tower radius"],[unlockTimes.landmark,"Landmark questions"],[unlockTimes.marker,"Marker questions"]];
+  const next=list.find(([t])=>sec<Number(t));
+  return next?`${next[1]} unlocks ${formatApproxDuration(Number(next[0])-sec)}`:"All question types unlocked";
+}
+function updateTopRoleBadge(){
+  const badge=document.getElementById("roomTopStatus");if(!badge)return;
+  badge.classList.remove("hider","seeker");
+  if(!roomModeConnected()){badge.textContent="OFFLINE";return;}
+  const role=roomRole(),code=window.BigWalkRooms?.getRoomCode?.()||"ROOM";
+  badge.textContent=`${role==="hider"?"HIDER":"SEEKER"} · ${code}`;
+  badge.classList.add("connected",role==="hider"?"hider":"seeker");
+}
+function updateGameDashboard(){
+  const card=document.getElementById("currentActionSection");if(!card)return;
+  const eyebrow=document.getElementById("currentActionEyebrow"),title=document.getElementById("currentActionTitle"),timer=document.getElementById("currentActionTimer"),detail=document.getElementById("currentActionDetail"),next=document.getElementById("currentActionNext"),secondary=document.getElementById("currentActionSecondary");
+  const controls=document.getElementById("matchControlSection"),points=document.getElementById("seekerPointsSection"),qSection=document.getElementById("questionNextSection"),qStatus=document.getElementById("gameQuestionStatus"),qNext=document.getElementById("gameQuestionNext");
+  const connected=roomModeConnected(),role=connected?roomRole():null,isHider=role==="hider",isSeeker=role==="seeker",sec=currentMatchSeconds(),running=connected?roomMatchRunning():matchRunning;
+  controls.style.display=connected&&!window.BigWalkRooms?.isHost?.()?"none":"block";
+  points.style.display=isSeeker?"block":"none";qSection.style.display=isSeeker?"block":"none";
+  card.classList.remove("hider","seeker","urgent");if(isHider)card.classList.add("hider");if(isSeeker)card.classList.add("seeker");
+  timer.style.display="none";eyebrow.textContent="CURRENT STATUS";
+  const relocationNext=Math.max(0,Number(relocationState.nextAt??relocationSettings.firstAt)-sec);
+  next.textContent=missionState.active?"Relocation · paused":`Next relocation · ${formatApproxDuration(relocationNext)}`;
+  secondary.textContent=isHider?`⚡ ${Math.max(0,Number(hiderPowerCharges||0))} Power Charge${Number(hiderPowerCharges||0)===1?"":"s"}`:isSeeker?`${seekerPointsBalance()} Seeker Point${seekerPointsBalance()===1?"":"s"}`:"—";
+  if(!connected){title.textContent="Join a room";detail.textContent="Create or join a shared room to start a multiplayer match.";next.textContent="No active match";secondary.textContent="—";return;}
+  if(sec<.01&&!running){title.textContent="Ready to play";detail.textContent=window.BigWalkRooms?.isHost?.()?"Start the match when everyone is ready.":"Waiting for the room host to start the match.";next.textContent="Match not started";return;}
+  if(!running){title.textContent="Match paused";detail.textContent="Gameplay timers are paused.";next.textContent="Waiting to resume";return;}
+  if(relocationState.active){
+    card.classList.add("urgent");eyebrow.textContent="CURRENT OBJECTIVE";
+    const rem=Math.max(0,Number(relocationState.deadline||sec)-sec);timer.style.display="block";timer.textContent=rem>0?formatTime(rem):"OVERTIME";
+    title.textContent=isHider?"Forced relocation":"Hider relocating";
+    if(isHider&&localRelocationPlan&&!localRelocationPlan.invalid&&!localRelocationPlan.skip&&liveMarker){
+      const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y);detail.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)} units from relocation start.`;
+    }else detail.textContent=isHider?"Move to a legal new hiding area and press Ready when the target is met.":"Questions are locked until the Hider finishes relocating.";
+    next.textContent=rem>0?"Target window active":"Overtime penalty active";return;
+  }
+  if(missionState.active){
+    eyebrow.textContent="CURRENT OBJECTIVE";title.textContent=isHider?"Cross the Zone":"Hider mission active";
+    if(isHider&&liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
+    else detail.textContent=isHider?"Reach the private purple target area.":"The mission target and Hider progress remain private.";
+    next.textContent="Forced relocation · paused";return;
+  }
+  if(isHider&&missionState.available){eyebrow.textContent="OPTIONAL OBJECTIVE";title.textContent="Mission available";detail.textContent="Cross the Zone is ready whenever you want to take it.";return;}
+  title.textContent=isHider?"Stay hidden":"Search for the Hider";
+  detail.textContent=isHider?"No movement objective is active. Stay put unless you choose a mission.":questionCooldownActive()?"An unlocked question is cooling down.":"Use the map and spend points on available questions.";
+  if(isSeeker){
+    if(relocationState.active)qStatus.textContent="Locked";
+    else if(questionCooldownActive())qStatus.textContent=`Cooling down · ${formatApproxDuration(questionCooldownRemaining())}`;
+    else qStatus.textContent="Ready";
+    qNext.textContent=nextQuestionUnlockInfo(sec)+".";
+  }
+}
 function seekerPointsEarned(){return Math.floor(currentMatchSeconds()/60)*pointsPerMinute;}
 function seekerPointsBalance(){return Math.max(0,seekerPointsEarned()-seekerPointsSpent);}
 function towerRadiusCost(radius){
@@ -1475,14 +1608,9 @@ function updateMissionUi(){
   type.textContent="Cross the Zone";
   charges.textContent=isRoomHider()||!roomModeConnected()?String(Math.max(0,Number(hiderPowerCharges||0))):"Hidden";
   const now=currentMatchSeconds();
-  if(!roomModeConnected()){
-    section.style.display="block";
-    headline.textContent=formatTime(Math.max(0,Number(missionState.nextAt??missionSettings.firstAt)-now));status.textContent="Rooms required";progress.textContent="—";message.textContent="Hider missions activate during shared room matches.";return;
-  }
-  if(!isRoomHider()&&!missionState.active){
-    section.style.display="none";
-    return;
-  }
+  if(!roomModeConnected()){section.style.display="none";return;}
+  if(isRoomHider()&&!missionState.active&&!missionState.available){section.style.display="none";return;}
+  if(!isRoomHider()&&!missionState.active){section.style.display="none";return;}
   section.style.display="block";
   if(missionState.active){
     headline.textContent="ACTIVE";
@@ -1576,6 +1704,8 @@ async function maybeHostAdvanceRelocation(){
 function updateRelocationUi(){
   const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),status=document.getElementById("relocationStatus"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage"),readyBtn=document.getElementById("relocationReadyBtn");
   if(!section)return;
+  if(!roomModeConnected()||!relocationState.active){section.style.display="none";return;}
+  section.style.display="block";
   readyBtn.style.display="none";readyBtn.disabled=true;readyBtn.textContent="Ready";
   section.classList.toggle("relocationActive",!!relocationState.active);
   const now=currentMatchSeconds();
@@ -1638,7 +1768,8 @@ function showTab(name){
   panel.style.display="block";
   document.querySelectorAll(".panelView").forEach(v=>v.classList.remove("active"));
   document.getElementById(`view-${name}`).classList.add("active");
-  document.querySelectorAll(".tabBtn").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));
+  const primary=["game","questions","tools","more"].includes(name)?name:"more";
+  document.querySelectorAll(".tabBtn").forEach(b=>b.classList.toggle("active",b.dataset.tab===primary));
 }
 function hidePanel(){panelVisible=false;panel.style.display="none";document.querySelectorAll(".tabBtn").forEach(b=>b.classList.remove("active"));}
 
@@ -1759,8 +1890,7 @@ function updateCooldownDisplay(){
   clock.classList.remove("ready","waiting");
   if(roomModeConnected()&&relocationState.active){
     clock.textContent="RELOCATION";clock.classList.add("waiting");
-    const relocationRemain=Math.max(0,Number(relocationState.deadline||currentMatchSeconds())-currentMatchSeconds());
-    status.textContent=relocationRemain>0?`Questions are locked while the hider relocates · ${formatTime(relocationRemain)} target window remaining.`:"Relocation is overdue; questions remain locked until it is completed.";
+    status.textContent="Questions are locked while the Hider relocates.";
   }else if(testingUnlockOverride){
     clock.textContent="BYPASSED";
     clock.classList.add("ready");
@@ -1791,17 +1921,11 @@ function setSectionLocked(sectionId,unlockAt,noticeId){
 
   const notice=document.getElementById(noticeId);
   if(!unlocked){
-    if(matchElapsedMs===0&&!matchRunning){
-      notice.textContent=`Locked until ${formatTime(unlockAt)} after the match starts.`;
-    }else{
-      const remain=Math.max(0,unlockAt-currentMatchSeconds());
-      notice.textContent=`Locked until ${formatTime(unlockAt)} · ${formatTime(remain)} remaining.`;
-    }
+    notice.textContent=`Locked · unlocks at ${formatTime(unlockAt)}.`;
   }else if(relocationLock){
-    const remain=Math.max(0,Number(relocationState.deadline||currentMatchSeconds())-currentMatchSeconds());
-    notice.textContent=remain>0?`Hider relocation in progress · ${formatTime(remain)} target window remaining.`:"Hider relocation is overdue · locked until relocation completes.";
+    notice.textContent="Locked during forced relocation.";
   }else if(cooldown){
-    notice.textContent=`Global question cooldown · ${formatTime(questionCooldownRemaining())} remaining.`;
+    notice.textContent="Locked during the global question cooldown.";
   }else if(roomReadOnly){
     notice.textContent="Shared room: only seekers (or the host) can submit questions.";
   }
@@ -1834,6 +1958,7 @@ function updateMilestones(){
   let nextFound=false;
   for(const [id,key,label] of list){
     const t=unlockTimes[key],el=document.getElementById(id);
+    if(!el)continue;
     el.textContent=`${formatTime(t)} · ${label}`;
     el.classList.remove("unlocked","next");
     if(testingUnlockOverride||sec>=t) el.classList.add("unlocked");
@@ -1867,50 +1992,17 @@ function renderMatchTimer(){
   document.getElementById("matchTimer").textContent=time;
   document.getElementById("topTimerClock").textContent=time;
   updateLocalRelocation();updateRelocationUi();updateLocalHiderMission();updateMissionUi();
-  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();
+  updateQuestionLocks();updateMilestones();updateRuleTimes();updateSeekerPointsDisplay();updateGameDashboard();updateTopRoleBadge();
 
-  const status=document.getElementById("timerStatus");
-  const topSub=document.getElementById("topTimerSub");
-  if(testingUnlockOverride){
-    status.textContent="Testing override active — all questions unlocked.";
-    topSub.textContent="Testing override active";
-    return;
-  }
-  if(!matchRunning&&matchElapsedMs===0){
-    status.textContent="Start the match to begin the unlock schedule.";
-    topSub.textContent="Match not started";
-    return;
-  }
-  if(!matchRunning){
-    status.textContent="Match timer paused.";
-    topSub.textContent="Paused";
-    return;
-  }
-  const sec=currentMatchSeconds();
-  const upcoming=[
-    [unlockTimes.grid,"Centerline"],[unlockTimes.nearest,"Nearest tower"],
-    [unlockTimes.towerRadius,"Tower radius"],[unlockTimes.landmark,"Landmark questions"],
-    [unlockTimes.marker,"Marker questions"]
-  ].find(([t])=>sec<t);
-
-  if(roomModeConnected()&&relocationState.active){
-  const rem=Math.max(0,Number(relocationState.deadline||sec)-sec);
-  status.textContent=rem>0?`Forced relocation active · target window ${formatTime(rem)} remaining.`:"Forced relocation overdue · waiting for hider completion.";
-  topSub.textContent=rem>0?`Hider relocating · ${formatTime(rem)}`:"Hider relocation overtime";
-}else if(questionCooldownActive()){
-    const cd=formatTime(questionCooldownRemaining());
-    status.textContent=upcoming
-      ? `Question cooldown: ${cd}. Next unlock: ${upcoming[1]} in ${formatTime(upcoming[0]-sec)}.`
-      : `Question cooldown: ${cd}.`;
-    topSub.textContent=`Question ready in ${cd}`;
-  }else if(upcoming){
-    const rem=formatTime(upcoming[0]-sec);
-    status.textContent=`Next unlock: ${upcoming[1]} in ${rem}. Question is ready if an unlocked type is available.`;
-    topSub.textContent=`${upcoming[1]} in ${rem} · Question ready`;
-  }else{
-    status.textContent="All question types unlocked. Question ready.";
-    topSub.textContent="Question ready";
-  }
+  const status=document.getElementById("timerStatus"),topSub=document.getElementById("topTimerSub");
+  if(testingUnlockOverride){status.textContent="Testing override active — all questions unlocked.";topSub.textContent="Testing override";return;}
+  if(!matchRunning&&currentMatchSeconds()<.01){status.textContent="Start the match when everyone is ready.";topSub.textContent="Match not started";return;}
+  if(!matchRunning){status.textContent="Match paused.";topSub.textContent="Paused";return;}
+  status.textContent="Match running.";
+  if(roomModeConnected()&&relocationState.active)topSub.textContent="Forced relocation active";
+  else if(roomModeConnected()&&missionState.active)topSub.textContent="Hider mission active";
+  else if(questionCooldownActive())topSub.textContent="Questions cooling down";
+  else topSub.textContent="Questions ready";
 }
 function tickMatchTimer(){
   if(roomModeConnected()){
@@ -2140,6 +2232,7 @@ function setLiveLocationStatus(status,coords="—",altitude="—",message=""){
   document.getElementById("liveLocationCoords").textContent=coords;
   document.getElementById("liveLocationAltitude").textContent=altitude;
   document.getElementById("liveLocationMessage").textContent=message;
+  document.getElementById("liveLocationSection")?.classList.toggle("liveConnected",status==="Connected");
 }
 function stopLiveLocation(){
   liveLocationEnabled=false;
@@ -2360,6 +2453,7 @@ document.querySelectorAll(".tabBtn").forEach(btn=>btn.onclick=()=>{
   if(panelVisible&&activeTab===btn.dataset.tab){hidePanel();return;}
   showTab(btn.dataset.tab);
 });
+document.querySelectorAll("[data-open-view]").forEach(btn=>btn.onclick=()=>showTab(btn.dataset.openView));
 document.querySelectorAll(".closePanel").forEach(btn=>btn.onclick=hidePanel);
 
 // Keep toolbar pointer events from being captured by the map pane.
