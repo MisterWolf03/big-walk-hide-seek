@@ -956,6 +956,13 @@
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
       <div class="changeEntry">
+        <h4>v1.3.0 preview — Cross the Zone completion</h4>
+        <ul>
+          <li>Cross the Zone no longer auto-completes when the Hider first enters the purple target.</li>
+          <li>While inside the target, the Hider can settle on a new hiding spot and press Complete mission to finish.</li>
+        </ul>
+      </div>
+      <div class="changeEntry">
         <h4>v1.3.0 preview — Match control polish</h4>
         <ul>
           <li>Moved host match controls into compact Play / Pause / Reset icons beside the match timer.</li>
@@ -1616,7 +1623,7 @@ function updateGameDashboard(){
   }
   if(missionState.active&&isHider){
     eyebrow.textContent="CURRENT OBJECTIVE";title.textContent="Cross the Zone";
-    if(liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
+    if(liveMarker&&localHiderMissionPlan&&!localHiderMissionPlan.invalid){const inTarget=pointInMissionTarget(liveMarker,localHiderMissionPlan),d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);detail.textContent=inTarget?"Target reached — choose your new hiding spot, then complete the mission.":Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to the purple target area.`:"Reach the private purple target area.";}
     else detail.textContent="Reach the private purple target area.";
     next.textContent="Forced relocation · paused";return;
   }
@@ -1929,7 +1936,6 @@ function updateLocalHiderMission(){
     localHiderMissionTargetCells=valid.map(c=>({x:c.x,y:c.y,size:c.size}));
     if(appInitialized)draw();
   }
-  if(pointInMissionTarget(liveMarker,plan))signalMissionResult("completed");
 }
 async function maybeHostAdvanceMission(){
   if(!roomModeConnected()||!roomCanDriveMission()||missionMutationBusy||!roomMatchRunning()||hidingTimeRemaining()>.01)return;
@@ -2003,9 +2009,16 @@ function updateMissionUi(){
       else if(localHiderMissionPlan.invalid){progress.textContent="Cancelling…";message.textContent="No safe opposite-side target is available. The relocation timer will restart fresh.";}
       else if(localHiderMissionPlan.signaled){progress.textContent=localHiderMissionPlan.pendingResult==="completed"?"Target reached":"Cancelling";message.textContent=localHiderMissionPlan.pendingResult==="completed"?"Mission complete — confirming your Power Charge and restarting the relocation timer.":"Mission target became invalid — restarting the relocation timer.";}
       else{
+        const inTarget=pointInMissionTarget(liveMarker,localHiderMissionPlan);
         const d=missionDistanceToTarget(liveMarker,localHiderMissionPlan);
-        progress.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to target`:"Target active";
-        message.textContent="Reach the purple target area on the opposite side of the remaining legal search zone. The target is visible only to you.";
+        if(inTarget){
+          progress.textContent="Target reached";
+          message.textContent="You are inside the purple target area. Find your new hiding spot, then press Complete mission while you remain inside the zone.";
+          startBtn.style.display="block";startBtn.disabled=false;startBtn.textContent="Complete mission";
+        }else{
+          progress.textContent=Number.isFinite(d)?`${Math.max(0,Math.round(d))} units to target`:"Target active";
+          message.textContent="Reach the purple target area on the opposite side of the remaining legal search zone. The target is visible only to you.";
+        }
       }
     }else{
       status.textContent="Hider mission in progress";progress.textContent="Target hidden";message.textContent="Cross the Zone is active. The Hider's purple target and live position remain private; forced relocation will restart fresh when the mission ends.";
@@ -3063,6 +3076,11 @@ document.getElementById("testSoundBtn").onclick=()=>{showGameCue("questionUnlock
 document.addEventListener("pointerdown",()=>ensureGameAudioContext(),{once:true,capture:true});
 document.addEventListener("keydown",()=>ensureGameAudioContext(),{once:true,capture:true});
 document.getElementById("missionStartBtn").onclick=async()=>{
+  if(isRoomHider()&&missionState.active){
+    const plan=localHiderMissionPlan;
+    if(!roomMatchRunning()||!liveMarker||!plan||plan.invalid||plan.signaled||!pointInMissionTarget(liveMarker,plan))return;
+    signalMissionResult("completed");renderMatchTimer();return;
+  }
   if(!isRoomHider()||!missionState.available||missionState.active||relocationState.active||!roomMatchRunning()||!liveMarker||missionStartRequestPending)return;
   const fn=window.BigWalkRooms?.signalMissionStart;
   if(typeof fn!=="function"||window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)return;
