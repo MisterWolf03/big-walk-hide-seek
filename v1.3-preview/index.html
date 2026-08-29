@@ -55,11 +55,12 @@
     box-shadow:0 3px 12px rgba(0,0,0,.35);white-space:nowrap;
     transform:translate(14px,14px)
   }
-  #mapToolDock{
-    position:absolute;top:14px;left:14px;z-index:9;display:flex;gap:7px;padding:6px;
-    background:rgba(17,21,27,.94);border:1px solid var(--line);border-radius:11px;
-    box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)
+  #mapControlRow{position:absolute;top:14px;left:14px;z-index:9;display:flex;align-items:flex-start;gap:8px}
+  #mapToolDock,#mapDisplayDock{
+    position:relative;display:flex;gap:7px;padding:6px;background:rgba(17,21,27,.94);
+    border:1px solid var(--line);border-radius:11px;box-shadow:0 8px 22px rgba(0,0,0,.34);backdrop-filter:blur(8px)
   }
+  #mapDisplayDock .mapToolBtn.displayActive{background:#26372f;border-color:#426c55;color:#bdf5cf}
   .mapToolBtn{
     width:42px;height:42px;min-width:42px;padding:0;display:grid;place-items:center;
     border-radius:8px;background:#29323e;color:#eef3f8;border:1px solid #465362
@@ -324,7 +325,8 @@
     #topEconomyRate{font-size:9px}
     #roomConnected{right:8px;top:52px}
     #leaveRoomBtn{font-size:11px;padding:6px 7px}
-    #mapToolDock{top:8px;left:8px;gap:5px;padding:5px}
+    #mapControlRow{top:8px;left:8px;gap:6px}
+    #mapToolDock,#mapDisplayDock{gap:5px;padding:5px}
     .mapToolBtn{width:40px;height:40px;min-width:40px}
     #waypointNamePopover{left:50px;width:170px}
     #panel{left:8px;right:8px;top:8px;width:auto;max-height:calc(100% - 16px)}
@@ -386,6 +388,7 @@
       <canvas id="mapCanvas"></canvas>
     </div>
     <div id="coordTip">Y —, X —</div>
+    <div id="mapControlRow">
     <div id="mapToolDock" role="toolbar" aria-label="Map interaction tools">
       <button id="panModeBtn" class="mapToolBtn toolActive" type="button" title="Pan / inspect" aria-label="Pan / inspect" aria-pressed="true">
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -407,6 +410,21 @@
         <input id="waypointNameInput" type="text" maxlength="40" autocomplete="off" placeholder="Waypoint name (optional)" aria-label="Waypoint name">
       </div>
     </div>
+    <div id="mapDisplayDock" role="toolbar" aria-label="Map display controls">
+      <button id="fitBtn" class="mapToolBtn" type="button" title="Fit map" aria-label="Fit map">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5"/></svg>
+      </button>
+      <button id="gridBtn" class="mapToolBtn displayActive" type="button" title="Hide grid" aria-label="Toggle grid" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="1"/><path d="M9.33 4v16M14.67 4v16M4 9.33h16M4 14.67h16"/></svg>
+      </button>
+      <button id="towerBtn" class="mapToolBtn displayActive" type="button" title="Hide towers" aria-label="Toggle towers" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 21h8M8.5 8 12 3l3.5 5M9.5 13h5M6 7.5l-2 2M18 7.5l2 2"/></svg>
+      </button>
+      <button id="landmarkBtn" class="mapToolBtn displayActive" type="button" title="Hide landmarks" aria-label="Toggle landmarks" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+      </button>
+    </div>
+    </div>
   </div>
 
   <div id="panel">
@@ -416,7 +434,7 @@
       <section>
         <div class="moreGrid">
           <button data-open-view="rules"><b>Rules</b><span>Game rules and timing reference</span></button>
-          <button data-open-view="settings"><b>Settings</b><span>Timing, relocation, map, sound</span></button>
+          <button data-open-view="settings"><b>Settings</b><span>Timing, relocation, sound</span></button>
           <button data-open-view="changelog"><b>Changelog</b><span>Preview and release history</span></button>
         </div>
       </section>
@@ -829,15 +847,27 @@
       </details>
 
       <details class="settingsGroup" id="relocationSettingsGroup">
-        <summary><span>Forced relocation</span><span class="settingsHint">Cadence + movement target</span></summary>
+        <summary><span>Forced relocation</span><span class="settingsHint">Private randomized cadence + movement</span></summary>
         <div class="settingsBody">
-        <div class="scheduleGrid">
-          <label>First relocation (min)
-            <input id="relocationFirstMinutes" type="number" min="1" step="1" value="25">
-          </label>
-          <label>Repeat interval (min)
-            <input id="relocationIntervalMinutes" type="number" min="1" step="1" value="20">
-          </label>
+        <div class="presetBox">
+          <strong>Private trigger ranges</strong>
+          <div class="scheduleGrid" style="margin-top:9px">
+            <label>First relocation min (min)
+              <input id="relocationFirstMinMinutes" type="number" min="1" step="1" value="20">
+            </label>
+            <label>First relocation max (min)
+              <input id="relocationFirstMaxMinutes" type="number" min="1" step="1" value="30">
+            </label>
+            <label>Repeat min (min)
+              <input id="relocationRepeatMinMinutes" type="number" min="1" step="1" value="15">
+            </label>
+            <label>Repeat max (min)
+              <input id="relocationRepeatMaxMinutes" type="number" min="1" step="1" value="25">
+            </label>
+          </div>
+          <p class="small">The Hider privately rolls the exact trigger time inside each range. Even a Seeker host can configure these ranges without receiving the selected future time.</p>
+        </div>
+        <div class="scheduleGrid" style="margin-top:9px">
           <label>Target window (min)
             <input id="relocationWindowMinutes" type="number" min="0.5" step="0.5" value="5">
           </label>
@@ -850,21 +880,7 @@
         </div>
         <button class="primary" id="applyRelocationSettingsBtn" style="margin-top:8px">Apply relocation settings</button>
         <div id="relocationSettingsValidation" class="validation"></div>
-        <p class="small">The hider must end at least the target displacement from where relocation began. To avoid forcing edge-of-zone hiding, the target is capped at roughly 80% of the maximum displacement available in the connected legal search area; extremely cramped areas skip relocation.</p>
-        </div>
-      </details>
-
-      <details class="settingsGroup">
-        <summary><span>Map display</span><span class="settingsHint">Grid, towers, landmarks</span></summary>
-        <div class="settingsBody">
-        <div class="row">
-          <button id="fitBtn">Fit map</button>
-          <button id="gridBtn">Hide grid</button>
-        </div>
-        <div class="row" style="margin-top:8px">
-          <button id="towerBtn">Hide towers</button>
-          <button id="landmarkBtn">Hide landmarks</button>
-        </div>
+        <p class="small">Applying cadence changes rerolls the next private relocation window when no relocation or mission is active. Movement is still capped at roughly 80% of the connected legal area's available displacement; extremely cramped areas skip relocation.</p>
         </div>
       </details>
 
@@ -882,20 +898,6 @@
       </details>
 
 
-      <details class="settingsGroup">
-        <summary><span>Tower data</span><span class="settingsHint">Reference coordinates</span></summary>
-        <div class="settingsBody">
-        <div class="towerLegend" id="towerLegend"></div>
-        </div>
-      </details>
-
-      <details class="settingsGroup">
-        <summary><span>Landmark data</span><span class="settingsHint">Reference coordinates</span></summary>
-        <div class="settingsBody">
-        <div class="towerLegend" id="landmarkLegend"></div>
-        </div>
-      </details>
-
       <!-- Keep Development / testing as the final Settings category in future versions. -->
       <details class="settingsGroup">
         <summary><span>Development / testing</span><span class="settingsHint">Testing-only controls</span></summary>
@@ -909,6 +911,16 @@
     <div id="view-changelog" class="panelView">
       <div class="panelHeader"><h2>Changelog</h2><button class="closePanel">Hide</button></div>
 
+      <div class="changeEntry">
+        <h4>v1.3.0 preview — Private relocation ranges + map controls</h4>
+        <ul>
+          <li>Forced relocation now uses configurable first/repeat ranges with the exact trigger privately rolled by the Hider client.</li>
+          <li>Seeker hosts can configure relocation without receiving the selected future trigger time.</li>
+          <li>Completing or cancelling Cross the Zone rerolls a fresh private relocation delay.</li>
+          <li>Moved Fit, Grid, Towers, and Landmarks into a second floating map-control dock.</li>
+          <li>Removed the old Tower data and Landmark data Settings groups.</li>
+        </ul>
+      </div>
       <div class="changeEntry">
         <h4>v1.3.0 preview — Gameplay clarity pass</h4>
         <ul>
@@ -1110,7 +1122,7 @@
 
 <script>
 const APP_VERSION="1.3.0-preview";
-const REQUIRED_ROOMS_BUILD_ID="v13-missions-optional-20260827b";
+const REQUIRED_ROOMS_BUILD_ID="v13-private-relocation-20260829a";
 const LIVE_BRIDGE_URL="http://127.0.0.1:32145/position";
 
 const towers = {
@@ -1166,9 +1178,11 @@ let questionCooldownUntil=0;
 let seekerPointsSpent=0;
 const pointsPerMinute=1;
 const settingsDirtyInputs=new Set();
-let relocationSettings={firstAt:1500,interval:1200,window:300,minDistance:250,skipBelow:75};
-let relocationState={active:false,index:0,nextAt:1500,startedAt:null,deadline:null,lastResult:""};
+let relocationSettings={firstMin:1200,firstMax:1800,intervalMin:900,intervalMax:1500,window:300,minDistance:250,skipBelow:75};
+let relocationState={active:false,index:0,scheduleToken:"",scheduleFrom:0,startedAt:null,deadline:null,lastResult:""};
 let localRelocationPlan=null,relocationMutationBusy=false;
+let localRelocationSchedule=null,localRelocationDueLastAttempt=0;
+const PRIVATE_RELOCATION_STORAGE_PREFIX="bigwalk.privateRelocation.v1";
 let relocationSchedulerError="";
 let missionSettings={firstAt:600,minInterval:600,maxInterval:900};
 let missionState={active:false,index:0,nextAt:600,type:"crossZone",startedAt:null,lastResult:"",token:""};
@@ -1430,14 +1444,17 @@ function updateTopRoleBadge(){
 }
 function hidingTimeRemaining(){return Math.max(0,Number(hidingSettings.duration||0)-currentMatchSeconds());}
 function updateRoomChrome(){
-  const connected=roomModeConnected(),isHider=connected&&roomRole()==="hider";
+  const connected=roomModeConnected(),isHider=connected&&roomRole()==="hider",isHost=connected&&!!window.BigWalkRooms?.isHost?.();
   const actions=document.getElementById("topRoomActions"),popover=document.getElementById("roomConnected"),count=document.getElementById("roomPlayerCount"),playersBtn=document.getElementById("roomPlayersBtn"),qTab=document.querySelector('.tabBtn[data-tab="questions"]'),relocationSettingsGroup=document.getElementById("relocationSettingsGroup");
   if(actions)actions.style.display=connected?"flex":"none";
   if(count)count.textContent=String(document.getElementById("roomMemberList")?.children?.length||0);
   if(!connected&&popover)popover.classList.remove("open");
   if(playersBtn)playersBtn.setAttribute("aria-expanded",String(!!popover?.classList.contains("open")));
   if(qTab)qTab.style.display=isHider?"none":"";
-  if(relocationSettingsGroup)relocationSettingsGroup.style.display=!connected||isHider?"":"none";
+  if(relocationSettingsGroup){
+    relocationSettingsGroup.style.display=!connected||isHider||isHost?"":"none";
+    relocationSettingsGroup.querySelectorAll("input,button").forEach(el=>el.disabled=connected&&!isHost);
+  }
   if(isHider&&activeTab==="questions")showTab("game");
 }
 function initializeQuestionCollapsibles(){
@@ -1492,8 +1509,12 @@ function updateGameDashboard(){
   }
   card.classList.remove("hider","seeker","urgent");if(isHider)card.classList.add("hider");if(isSeeker)card.classList.add("seeker");
   timer.style.display="none";eyebrow.textContent="CURRENT STATUS";
-  const relocationNext=Math.max(0,Number(relocationState.nextAt??relocationSettings.firstAt)-sec);
-  if(isHider)next.textContent=missionState.active?"Relocation · paused":`Next relocation · ${formatApproxDuration(relocationNext)}`;
+  const relocationNext=isHider?privateRelocationRemaining():Number.NaN;
+  if(isHider){
+    if(missionState.active)next.textContent="Relocation · paused";
+    else if(Number.isFinite(relocationNext))next.textContent=`Next relocation · ${formatApproxDuration(relocationNext)}`;
+    else{const [lo,hi]=relocationRangeForIndex(relocationState.index);next.textContent=`Relocation window · ${formatApproxDuration(lo)}–${formatApproxDuration(hi)}`;}
+  }
   else if(isSeeker)next.textContent=questionCooldownActive()?`Questions · ${formatApproxDuration(questionCooldownRemaining())}`:nextQuestionUnlockInfo(sec);
   else next.textContent="No active match";
   secondary.textContent=isHider?"Hider":"Seeker";
@@ -1595,6 +1616,58 @@ function roomMatchRunning(){return roomModeConnected()?!!window.BigWalkRooms?.is
 function roomCanDriveRelocation(){return roomModeConnected()&&!!window.BigWalkRooms?.isHost?.();}
 function roomCanDriveMission(){return roomModeConnected()&&!!window.BigWalkRooms?.isHost?.();}
 function resetLocalRelocationPlan(){localRelocationPlan=null;}
+function resetLocalRelocationSchedule(){localRelocationSchedule=null;localRelocationDueLastAttempt=0;}
+function makeRelocationScheduleToken(){
+  if(globalThis.crypto?.randomUUID)return `rel-${crypto.randomUUID()}`;
+  const a=new Uint32Array(4);crypto.getRandomValues(a);
+  return `rel-${Date.now()}-${Array.from(a,n=>n.toString(36)).join("")}`;
+}
+function relocationRangeForIndex(index=relocationState.index){
+  return Number(index||0)===0
+    ? [Math.max(60,Number(relocationSettings.firstMin||1200)),Math.max(60,Number(relocationSettings.firstMax||1800))]
+    : [Math.max(60,Number(relocationSettings.intervalMin||900)),Math.max(60,Number(relocationSettings.intervalMax||1500))];
+}
+function freshRelocationSchedule(now,base=relocationState){
+  return {...base,active:false,scheduleToken:makeRelocationScheduleToken(),scheduleFrom:Number(now),startedAt:null,deadline:null,overtimeToken:""};
+}
+function privateRelocationStorageKey(token){
+  return `${PRIVATE_RELOCATION_STORAGE_PREFIX}:${window.BigWalkRooms?.getRoomCode?.()||"room"}:${token}`;
+}
+function ensureLocalRelocationSchedule(){
+  if(!isRoomHider()||relocationState.active||missionState.active)return null;
+  const token=String(relocationState.scheduleToken||"");if(!token)return null;
+  if(localRelocationSchedule?.token===token)return localRelocationSchedule;
+  const from=Number(relocationState.scheduleFrom);if(!Number.isFinite(from))return null;
+  const range=relocationRangeForIndex(relocationState.index),lo=Math.min(...range),hi=Math.max(...range),now=currentMatchSeconds();
+  let dueAt=Number.NaN;
+  try{
+    const saved=JSON.parse(localStorage.getItem(privateRelocationStorageKey(token))||"null");
+    if(saved&&saved.token===token&&Number(saved.from)===from&&Number.isFinite(Number(saved.dueAt)))dueAt=Number(saved.dueAt);
+  }catch{}
+  if(!Number.isFinite(dueAt)){
+    const minDue=from+lo,maxDue=from+hi;
+    if(now>=maxDue)dueAt=now;
+    else{const floor=Math.max(now,minDue);dueAt=floor+Math.random()*Math.max(0,maxDue-floor);}
+    dueAt=Math.max(now,Math.round(dueAt/15)*15);
+    try{localStorage.setItem(privateRelocationStorageKey(token),JSON.stringify({token,from,dueAt}));}catch{}
+  }
+  localRelocationSchedule={token,from,dueAt};
+  return localRelocationSchedule;
+}
+function privateRelocationRemaining(){
+  const schedule=ensureLocalRelocationSchedule();
+  return schedule?Math.max(0,Number(schedule.dueAt)-currentMatchSeconds()):Number.NaN;
+}
+function maybeSignalPrivateRelocationDue(){
+  if(!isRoomHider()||!roomMatchRunning()||hidingTimeRemaining()>.01||relocationState.active||missionState.active)return;
+  const schedule=ensureLocalRelocationSchedule();if(!schedule||currentMatchSeconds()+.01<Number(schedule.dueAt))return;
+  const existing=window.BigWalkRooms?.getHiderRelocationDueSignal?.();
+  if(existing&&String(existing.token||"")===schedule.token)return;
+  const now=Date.now();if(now-localRelocationDueLastAttempt<1000)return;localRelocationDueLastAttempt=now;
+  const fn=window.BigWalkRooms?.signalRelocationDue;
+  if(typeof fn!=="function"||window.BigWalkRooms?.getBuildId?.()!==REQUIRED_ROOMS_BUILD_ID)return;
+  Promise.resolve(fn(schedule.token)).catch(err=>{console.warn("Private relocation due signal failed",err);localRelocationDueLastAttempt=0;});
+}
 function relocationCellKey(x,y){return `${x},${y}`;}
 function buildRelocationPlan(start){
   const step=25;
@@ -1786,7 +1859,7 @@ async function maybeHostAdvanceMission(){
       missionMutationBusy=true;
       try{
         missionState={...missionState,active:false,available:false,nextAt:now+nextMissionDelay(),startedAt:null,lastResult:"cancelled",token:""};
-        relocationState={...relocationState,active:false,nextAt:now+relocationSettings.interval,startedAt:null,deadline:null};
+        relocationState=freshRelocationSchedule(now,relocationState);resetLocalRelocationSchedule();
         resetLocalHiderMissionPlan();
         await window.BigWalkRooms.pushGameState();
       }finally{missionMutationBusy=false;}
@@ -1799,7 +1872,7 @@ async function maybeHostAdvanceMission(){
         const result=String(signal.result);
         if(result==="completed")hiderPowerCharges=Math.max(0,Number(hiderPowerCharges||0))+1;
         missionState={...missionState,active:false,available:false,nextAt:now+nextMissionDelay(),startedAt:null,lastResult:result,token:""};
-        relocationState={...relocationState,active:false,nextAt:now+relocationSettings.interval,startedAt:null,deadline:null};
+        relocationState=freshRelocationSchedule(now,relocationState);resetLocalRelocationSchedule();
         resetLocalHiderMissionPlan();
         await window.BigWalkRooms.pushGameState();
       }finally{missionMutationBusy=false;}
@@ -1813,7 +1886,7 @@ async function maybeHostAdvanceMission(){
     missionMutationBusy=true;
     try{
       missionState={...missionState,active:true,available:false,nextAt:null,startedAt:now,lastResult:""};
-      relocationState={...relocationState,nextAt:null};
+      relocationState={...relocationState,scheduleToken:"",scheduleFrom:null};resetLocalRelocationSchedule();
       resetLocalHiderMissionPlan();
       await window.BigWalkRooms.pushGameState();
     }finally{missionMutationBusy=false;}
@@ -1904,85 +1977,54 @@ async function maybeHostAdvanceRelocation(){
   if(relocationState.active){
     if(!currentRelocationOvertimeToken()){
       relocationMutationBusy=true;
-      try{
-        relocationState={...relocationState,overtimeToken:makeRelocationOvertimeToken()};
-        await window.BigWalkRooms.pushGameState();
-      }finally{relocationMutationBusy=false;}
+      try{relocationState={...relocationState,overtimeToken:makeRelocationOvertimeToken()};await window.BigWalkRooms.pushGameState();}
+      finally{relocationMutationBusy=false;}
       return;
     }
     const signal=window.BigWalkRooms?.getHiderRelocationSignal?.();
     if(signal&&Number(signal.index)>=Number(relocationState.index)){
       relocationMutationBusy=true;
       try{
-        relocationState={...relocationState,active:false,lastResult:signal.result||"completed",nextAt:now+relocationSettings.interval,startedAt:null,deadline:null};
-        resetLocalRelocationPlan();
+        relocationState=freshRelocationSchedule(now,{...relocationState,lastResult:signal.result||"completed"});
+        resetLocalRelocationPlan();resetLocalRelocationSchedule();
         await window.BigWalkRooms.pushGameState();
       }finally{relocationMutationBusy=false;}
     }
     return;
   }
   if(!window.BigWalkRooms?.hasHider?.())return;
-  if(now+0.01<Number(relocationState.nextAt||relocationSettings.firstAt))return;
+  if(!String(relocationState.scheduleToken||"")){
+    relocationMutationBusy=true;
+    try{relocationState=freshRelocationSchedule(Number(relocationState.index||0)===0?0:now,relocationState);resetLocalRelocationSchedule();await window.BigWalkRooms.pushGameState();}
+    finally{relocationMutationBusy=false;}
+    return;
+  }
+  const due=window.BigWalkRooms?.getHiderRelocationDueSignal?.();
+  if(!due||String(due.token||"")!==String(relocationState.scheduleToken||""))return;
   relocationMutationBusy=true;
   try{
-    relocationState={active:true,index:Number(relocationState.index||0)+1,nextAt:Number(relocationState.nextAt||relocationSettings.firstAt),startedAt:now,deadline:now+relocationSettings.window,lastResult:"",overtimeToken:makeRelocationOvertimeToken()};
-    resetLocalRelocationPlan();
+    relocationState={active:true,index:Number(relocationState.index||0)+1,scheduleToken:"",scheduleFrom:null,startedAt:now,deadline:now+relocationSettings.window,lastResult:"",overtimeToken:makeRelocationOvertimeToken()};
+    resetLocalRelocationPlan();resetLocalRelocationSchedule();
     await window.BigWalkRooms.pushGameState();
   }finally{relocationMutationBusy=false;}
 }
 function updateRelocationUi(){
-  const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),status=document.getElementById("relocationStatus"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage"),readyBtn=document.getElementById("relocationReadyBtn");
+  const section=document.getElementById("relocationGameSection"),headline=document.getElementById("relocationHeadline"),target=document.getElementById("relocationTarget"),progress=document.getElementById("relocationProgress"),message=document.getElementById("relocationMessage"),readyBtn=document.getElementById("relocationReadyBtn");
   if(!section)return;
   if(!roomModeConnected()||!isRoomHider()||!relocationState.active){section.style.display="none";return;}
-  section.style.display="block";
+  section.style.display="block";section.classList.add("relocationActive");
   readyBtn.style.display="none";readyBtn.disabled=true;readyBtn.textContent="Ready";
-  section.classList.toggle("relocationActive",!!relocationState.active);
-  const now=currentMatchSeconds();
-  if(!roomModeConnected()){
-    headline.textContent=formatTime(Math.max(0,relocationState.nextAt-now));status.textContent="Rooms required";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";message.textContent="Forced relocation activates during shared room matches.";return;
-  }
-  if(relocationState.active){
-    const remaining=Math.max(0,Number(relocationState.deadline||now)-now);
-    headline.textContent=remaining>0?formatTime(remaining):"OVERTIME";
-    status.textContent="Relocation in progress";
-    if(isRoomHider()){
-      if(!liveMarker){target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="Waiting for live tracker";message.textContent="Connect live location. Your coordinates stay local; only completion is sent to the room.";}
-      else if(!localRelocationPlan){target.textContent="Calculating…";progress.textContent="—";message.textContent="Mapping the connected legal search area around your relocation start.";}
-      else if(localRelocationPlan.invalid){target.textContent="—";progress.textContent="Start outside legal area";message.textContent="Move back inside the current valid search area so relocation can begin.";}
-      else if(localRelocationPlan.skip){target.textContent="Skipped";progress.textContent=`Max ≈ ${Math.round(localRelocationPlan.maxDistance)} units`;message.textContent="The remaining connected legal area is too cramped for a meaningful relocation. Sending a skip result.";}
-      else{
-        const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y),legal=pointInRelocationRegion(liveMarker,localRelocationPlan),ready=d>=localRelocationPlan.target&&legal;
-        target.textContent=`${Math.round(localRelocationPlan.target)} units${localRelocationPlan.target<relocationSettings.minDistance?" · scaled":""}`;
-        progress.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)}${legal?"":" · outside connected legal area"}`;
-        readyBtn.style.display=(ready||localRelocationPlan.signaled)?"block":"none";
-        readyBtn.disabled=!ready||localRelocationPlan.signaled;
-        readyBtn.textContent=localRelocationPlan.signaled?"Ready — confirming…":"Ready";
-        message.textContent=localRelocationPlan.signaled?"Ready confirmed — waiting for the room to schedule the next relocation.":ready?"Minimum move reached. Keep searching if you want, then press Ready once you have a hiding spot.":"Displacement is measured from where this relocation started, not total distance traveled.";
-      }
-    }
-  }else{
-    if(missionState.active){
-      headline.textContent="MISSION";status.textContent="Countdown cancelled";target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";message.textContent="Cross the Zone is active. This relocation countdown was cancelled; a fresh full interval starts when the mission ends.";return;
-    }
-    const next=Math.max(0,Number(relocationState.nextAt??relocationSettings.firstAt)-now);
-    headline.textContent=formatTime(next);target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="—";
-    if(relocationSchedulerError){
-      status.textContent="Scheduler error";
-      message.textContent=`Could not start relocation: ${relocationSchedulerError}`;
-    }else if(!window.BigWalkRooms?.hasHider?.()){
-      status.textContent="Waiting for Hider";
-      message.textContent=next<=.01?"Relocation is due, but there is no Hider currently in the room.":`Next relocation in ${formatTime(next)}. A Hider must be in the room when it becomes due.`;
-    }else if(!roomMatchRunning()){
-      status.textContent="Match paused";
-      message.textContent="The relocation clock will resume when the shared match resumes.";
-    }else if(next<=.01){
-      status.textContent="Starting…";
-      message.textContent="Relocation is due and the room is starting it now.";
-    }else{
-      status.textContent=relocationState.lastResult?`Last: ${relocationState.lastResult}`:"Waiting";
-      message.textContent=`Next relocation in ${formatTime(next)}. After completion, the next one is scheduled ${formatTime(relocationSettings.interval)} later.`;
-    }
-  }
+  const now=currentMatchSeconds(),remaining=Math.max(0,Number(relocationState.deadline||now)-now);
+  headline.textContent=remaining>0?formatTime(remaining):"OVERTIME";
+  if(!liveMarker){target.textContent=`${relocationSettings.minDistance} units`;progress.textContent="Waiting for live tracker";message.textContent="Connect live location. Your coordinates stay local; only completion and intentional overtime reveal data are sent.";return;}
+  if(!localRelocationPlan){target.textContent="Calculating…";progress.textContent="—";message.textContent="Mapping the connected legal search area around your relocation start.";return;}
+  if(localRelocationPlan.invalid){target.textContent="—";progress.textContent="Start outside legal area";message.textContent="Move back inside the current valid search area so relocation can begin.";return;}
+  if(localRelocationPlan.skip){target.textContent="Skipped";progress.textContent=`Max ≈ ${Math.round(localRelocationPlan.maxDistance)} units`;message.textContent="The remaining connected legal area is too cramped for a meaningful relocation. Sending a skip result.";return;}
+  const d=Math.hypot(liveMarker.x-localRelocationPlan.start.x,liveMarker.y-localRelocationPlan.start.y),legal=pointInRelocationRegion(liveMarker,localRelocationPlan),ready=d>=localRelocationPlan.target&&legal;
+  target.textContent=`${Math.round(localRelocationPlan.target)} units${localRelocationPlan.target<relocationSettings.minDistance?" · scaled":""}`;
+  progress.textContent=`${Math.round(d)} / ${Math.round(localRelocationPlan.target)}${legal?"":" · outside connected legal area"}`;
+  readyBtn.style.display=(ready||localRelocationPlan.signaled)?"block":"none";readyBtn.disabled=!ready||localRelocationPlan.signaled;readyBtn.textContent=localRelocationPlan.signaled?"Ready — confirming…":"Ready";
+  message.textContent=localRelocationPlan.signaled?"Ready confirmed — waiting for the room to privately reroll the next relocation.":ready?"Minimum move reached. Keep searching if you want, then press Ready once you have a hiding spot.":"Displacement is measured from where this relocation started, not total distance traveled.";
 }
 
 function showTab(name){
@@ -2048,10 +2090,18 @@ window.BigWalkRoomBridge={
       if(Number.isFinite(Number(game.questionCooldownSeconds))&&Number(game.questionCooldownSeconds)>0)questionCooldownSeconds=Number(game.questionCooldownSeconds);
       if(game.questionCosts&&typeof game.questionCosts==="object")questionCosts={...questionCosts,...game.questionCosts};
       seekerPointsSpent=Math.max(0,Number(game.seekerPointsSpent||0));
-      if(game.relocationSettings&&typeof game.relocationSettings==="object")relocationSettings={...relocationSettings,...game.relocationSettings};
+      if(game.relocationSettings&&typeof game.relocationSettings==="object"){
+        const incomingSettings=game.relocationSettings;
+        relocationSettings={...relocationSettings,...incomingSettings};
+        if(!Number.isFinite(Number(incomingSettings.firstMin))&&Number.isFinite(Number(incomingSettings.firstAt)))relocationSettings.firstMin=relocationSettings.firstMax=Number(incomingSettings.firstAt);
+        if(!Number.isFinite(Number(incomingSettings.intervalMin))&&Number.isFinite(Number(incomingSettings.interval)))relocationSettings.intervalMin=relocationSettings.intervalMax=Number(incomingSettings.interval);
+        relocationSettings.firstMax=Math.max(Number(relocationSettings.firstMin),Number(relocationSettings.firstMax));
+        relocationSettings.intervalMax=Math.max(Number(relocationSettings.intervalMin),Number(relocationSettings.intervalMax));
+      }
       if(game.relocationState&&typeof game.relocationState==="object"){
         const incoming={...relocationState,...game.relocationState};
         if(Number(incoming.index)!==Number(relocationState.index)||!incoming.active)resetLocalRelocationPlan();
+        if(String(incoming.scheduleToken||"")!==String(relocationState.scheduleToken||""))resetLocalRelocationSchedule();
         relocationState=incoming;
       }
       if(game.missionSettings&&typeof game.missionSettings==="object")missionSettings={...missionSettings,...game.missionSettings};
@@ -2071,7 +2121,7 @@ window.BigWalkRoomBridge={
     roomApplyingRemoteState=true;
     try{
       matchRunning=false;matchElapsedMs=0;matchLastTick=null;questionCooldownUntil=0;seekerPointsSpent=0;
-      relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
+      relocationState={active:false,index:0,scheduleToken:"",scheduleFrom:0,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();resetLocalRelocationSchedule();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
       missionState={active:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;resetLocalHiderMissionPlan();
       constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker?"live":null;nextMarkerId=1;rulerA=null,rulerB=null;
       ["splitValidation","radarValidation","landmarkQuestionValidation","markerQuestionValidation"].forEach(id=>document.getElementById(id).textContent="");
@@ -2188,7 +2238,7 @@ function updateMilestones(){
 }
 function updateRuleTimes(){}
 function updateRelocationSettingsInputs(){
-  const ids={relocationFirstMinutes:relocationSettings.firstAt/60,relocationIntervalMinutes:relocationSettings.interval/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
+  const ids={relocationFirstMinMinutes:relocationSettings.firstMin/60,relocationFirstMaxMinutes:relocationSettings.firstMax/60,relocationRepeatMinMinutes:relocationSettings.intervalMin/60,relocationRepeatMaxMinutes:relocationSettings.intervalMax/60,relocationWindowMinutes:relocationSettings.window/60,relocationMinDistance:relocationSettings.minDistance,relocationSkipBelow:relocationSettings.skipBelow};
   for(const [id,value] of Object.entries(ids))syncSettingValue(id,value);
 }
 function syncHideTimeControls(){
@@ -2234,6 +2284,7 @@ function renderMatchTimer(){
 }
 function tickMatchTimer(){
   if(roomModeConnected()){
+    maybeSignalPrivateRelocationDue();
     Promise.resolve()
       .then(()=>maybeHostAdvanceMission())
       .then(()=>{missionSchedulerError="";return maybeHostAdvanceRelocation();})
@@ -2257,7 +2308,7 @@ function startTimerLoop(){
 function resetMatchState(){
   matchRunning=false;matchElapsedMs=0;matchLastTick=null;
   questionCooldownUntil=0;seekerPointsSpent=0;
-  relocationState={active:false,index:0,nextAt:relocationSettings.firstAt,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
+  relocationState={active:false,index:0,scheduleToken:"",scheduleFrom:0,startedAt:null,deadline:null,lastResult:""};resetLocalRelocationPlan();resetLocalRelocationSchedule();localRelocationOvertimeSnapshot=null;localRelocationOvertimeSignalIndex=0;
   missionState={active:false,index:0,nextAt:missionSettings.firstAt,type:"crossZone",startedAt:null,lastResult:"",token:""};hiderPowerCharges=0;resetLocalHiderMissionPlan();
   constraints=[];historyText=[];playerMarkers=[];activeMarkerId=liveMarker ? "live" : null;nextMarkerId=1;rulerA=null;rulerB=null;
   document.getElementById("startMatchBtn").textContent="Start match";
@@ -2654,26 +2705,10 @@ function updateGridInputRules(){
 
 function populate(){
   for(const sel of [document.getElementById("nearestTower"),document.getElementById("radarTower")]){
-    for(const name of Object.keys(towers)){
-      const o=document.createElement("option");o.value=name;o.textContent=name;sel.appendChild(o);
-    }
+    for(const name of Object.keys(towers)){const o=document.createElement("option");o.value=name;o.textContent=name;sel.appendChild(o);}
   }
   for(const sel of [document.getElementById("nearestLandmark"),document.getElementById("landmarkRadiusLandmark")]){
-    for(const name of Object.keys(landmarks)){
-      const o=document.createElement("option");o.value=name;o.textContent=name;sel.appendChild(o);
-    }
-  }
-  const leg=document.getElementById("towerLegend");
-  for(const [name,t] of Object.entries(towers)){
-    const d=document.createElement("div");
-    d.innerHTML=`<span class="dot" style="background:${t.color}"></span>${name}: Y${t.y}, X${t.x}`;
-    leg.appendChild(d);
-  }
-  const landLeg=document.getElementById("landmarkLegend");
-  for(const [name,t] of Object.entries(landmarks)){
-    const d=document.createElement("div");
-    d.innerHTML=`<span class="dot" style="background:${t.color}"></span>${name}: Y${t.y}, X${t.x}`;
-    landLeg.appendChild(d);
+    for(const name of Object.keys(landmarks)){const o=document.createElement("option");o.value=name;o.textContent=name;sel.appendChild(o);}
   }
 }
 
@@ -2695,9 +2730,8 @@ document.addEventListener("click",()=>{roomPlayersPopover.classList.remove("open
 document.querySelectorAll(".closePanel").forEach(btn=>btn.onclick=hidePanel);
 
 // Keep toolbar pointer events from being captured by the map pane.
-const mapToolDock=document.getElementById("mapToolDock");
-mapToolDock.addEventListener("pointerdown",e=>e.stopPropagation());
-mapToolDock.addEventListener("pointerup",e=>e.stopPropagation());
+const mapToolDock=document.getElementById("mapToolDock"),mapDisplayDock=document.getElementById("mapDisplayDock");
+for(const dock of [mapToolDock,mapDisplayDock]){dock.addEventListener("pointerdown",e=>e.stopPropagation());dock.addEventListener("pointerup",e=>e.stopPropagation());}
 
 document.getElementById("startMatchBtn").onclick=()=>{
   if(roomModeConnected()){Promise.resolve(window.BigWalkRooms.startMatch()).catch(console.error);return;}
@@ -2957,26 +2991,26 @@ document.getElementById("relocationReadyBtn").onclick=()=>{
 document.getElementById("applyRelocationSettingsBtn").onclick=()=>{
   const v=document.getElementById("relocationSettingsValidation");v.textContent="";
   if(roomModeConnected()&&!window.BigWalkRooms?.isHost?.()){v.textContent="Only the room host can change relocation settings.";return;}
-  const first=+document.getElementById("relocationFirstMinutes").value,interval=+document.getElementById("relocationIntervalMinutes").value,windowMin=+document.getElementById("relocationWindowMinutes").value,minDistance=+document.getElementById("relocationMinDistance").value,skipBelow=+document.getElementById("relocationSkipBelow").value;
-  if(![first,interval,windowMin,minDistance,skipBelow].every(Number.isFinite)||first<=0||interval<=0||windowMin<=0||minDistance<25||skipBelow<25){v.textContent="Use positive times and distances of at least 25 units.";return;}
+  const firstMin=+document.getElementById("relocationFirstMinMinutes").value,firstMax=+document.getElementById("relocationFirstMaxMinutes").value,repeatMin=+document.getElementById("relocationRepeatMinMinutes").value,repeatMax=+document.getElementById("relocationRepeatMaxMinutes").value,windowMin=+document.getElementById("relocationWindowMinutes").value,minDistance=+document.getElementById("relocationMinDistance").value,skipBelow=+document.getElementById("relocationSkipBelow").value;
+  if(![firstMin,firstMax,repeatMin,repeatMax,windowMin,minDistance,skipBelow].every(Number.isFinite)||firstMin<=0||firstMax<=0||repeatMin<=0||repeatMax<=0||windowMin<=0||minDistance<25||skipBelow<25){v.textContent="Use positive times and distances of at least 25 units.";return;}
+  if(firstMax<firstMin||repeatMax<repeatMin){v.textContent="Each maximum must be greater than or equal to its minimum.";return;}
   if(skipBelow>minDistance){v.textContent="Skip-below distance cannot be larger than the normal relocation target.";return;}
-  relocationSettings={firstAt:first*60,interval:interval*60,window:windowMin*60,minDistance,skipBelow};
-  if(!relocationState.active&&!missionState.active){relocationState.nextAt=relocationState.index===0?relocationSettings.firstAt:currentMatchSeconds()+relocationSettings.interval;}
-  clearSettingDraft(["relocationFirstMinutes","relocationIntervalMinutes","relocationWindowMinutes","relocationMinDistance","relocationSkipBelow"]);
+  relocationSettings={firstMin:firstMin*60,firstMax:firstMax*60,intervalMin:repeatMin*60,intervalMax:repeatMax*60,window:windowMin*60,minDistance,skipBelow};
+  if(!relocationState.active&&!missionState.active){relocationState=freshRelocationSchedule(currentMatchSeconds(),relocationState);resetLocalRelocationSchedule();}
+  clearSettingDraft(["relocationFirstMinMinutes","relocationFirstMaxMinutes","relocationRepeatMinMinutes","relocationRepeatMaxMinutes","relocationWindowMinutes","relocationMinDistance","relocationSkipBelow"]);
   resetLocalRelocationPlan();updateRelocationSettingsInputs();renderMatchTimer();notifyRoomGameStateChanged();
-  v.style.color="#9ef1c2";v.textContent="Relocation settings applied.";setTimeout(()=>{v.textContent="";v.style.color="";},1500);
+  v.style.color="#9ef1c2";v.textContent="Relocation settings applied; the next private trigger has been rerolled.";setTimeout(()=>{v.textContent="";v.style.color="";},1800);
 };
 
 document.getElementById("fitBtn").onclick=fitMap;
-document.getElementById("gridBtn").onclick=()=>{
-  showGrid=!showGrid;document.getElementById("gridBtn").textContent=showGrid?"Hide grid":"Show grid";draw();
-};
-document.getElementById("towerBtn").onclick=()=>{
-  showTowers=!showTowers;document.getElementById("towerBtn").textContent=showTowers?"Hide towers":"Show towers";draw();
-};
-document.getElementById("landmarkBtn").onclick=()=>{
-  showLandmarks=!showLandmarks;document.getElementById("landmarkBtn").textContent=showLandmarks?"Hide landmarks":"Show landmarks";draw();
-};
+function syncMapDisplayButtons(){
+  for(const [id,shown,label] of [["gridBtn",showGrid,"grid"],["towerBtn",showTowers,"towers"],["landmarkBtn",showLandmarks,"landmarks"]]){
+    const btn=document.getElementById(id);if(!btn)continue;btn.classList.toggle("displayActive",shown);btn.setAttribute("aria-pressed",String(shown));btn.title=`${shown?"Hide":"Show"} ${label}`;
+  }
+}
+document.getElementById("gridBtn").onclick=()=>{showGrid=!showGrid;syncMapDisplayButtons();draw();};
+document.getElementById("towerBtn").onclick=()=>{showTowers=!showTowers;syncMapDisplayButtons();draw();};
+document.getElementById("landmarkBtn").onclick=()=>{showLandmarks=!showLandmarks;syncMapDisplayButtons();draw();};
 pane.addEventListener("pointerdown",e=>{
   pointerDownPos={x:e.clientX,y:e.clientY};movedSinceDown=false;last={x:e.clientX,y:e.clientY};
   if(toolMode==="pan"){dragging=true;stage.classList.add("dragging");}
@@ -3044,7 +3078,7 @@ function initializeMapApp(){
   if(appInitialized || !img.naturalWidth || !img.naturalHeight)return;
   appInitialized=true;
   canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
-  populate();initializeQuestionCollapsibles();bindSettingDraftProtection();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();
+  populate();initializeQuestionCollapsibles();bindSettingDraftProtection();updateMarkerPanel();updateRulerPanel();updateGridInputRules();updateScheduleInputs();updateQuestionCostInputs();updateRelocationSettingsInputs();syncMapDisplayButtons();
   setToolMode("pan");renderMatchTimer();startTimerLoop();draw();fitMap();
   checkForSiteUpdate();
   setInterval(checkForSiteUpdate,300000);
@@ -3054,6 +3088,6 @@ if(img.complete && img.naturalWidth>0)initializeMapApp();
 window.addEventListener("resize",()=>{if(appInitialized)fitMap();});
 </script>
 <script src="firebase-config.js"></script>
-<script type="module" src="rooms.js?v=v13-missions-optional-20260827b"></script>
+<script type="module" src="rooms.js?v=v13-private-relocation-20260829a"></script>
 </body>
 </html>
