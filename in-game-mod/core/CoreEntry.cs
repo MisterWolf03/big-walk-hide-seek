@@ -166,7 +166,7 @@ public class HideSeekOverlay : MonoBehaviour
             byte[] pngBytes = memory.ToArray();
 
             mapTexture = new Texture2D(2, 2);
-            var il2cppBytes = new Il2CppStructArray<byte>(pngBytes);
+            Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pngBytes);
             if (!ImageConversion.LoadImage(mapTexture, il2cppBytes, false))
                 throw new InvalidDataException("Unity could not decode the embedded map PNG.");
 
@@ -184,6 +184,16 @@ public class HideSeekOverlay : MonoBehaviour
                 mapTexture = null;
             }
         }
+    }
+
+    private static Il2CppStructArray<byte> ToIl2CppByteArray(byte[] managedBytes)
+    {
+        // Avoid Il2CppStructArray(byte[]), which routes through ReadOnlySpan<T>
+        // on this interop/runtime combination and throws GetPinnableReference().
+        var result = new Il2CppStructArray<byte>(managedBytes.Length);
+        for (int i = 0; i < managedBytes.Length; i++)
+            result[i] = managedBytes[i];
+        return result;
     }
 
     private void UpdatePlayerPosition()
