@@ -1,17 +1,32 @@
 # Big Walk Hide + Seek — In-Game Mod Prototype
 
-Experimental BepInEx/IL2CPP client for moving the Hide + Seek interface into Big Walk itself.
+Experimental BepInEx 6 IL2CPP client for moving the Hide + Seek interface into Big Walk itself.
 
-## Current milestone: Loader + updateable Core
+## Current milestone: first in-game map build
 
-The overlay/input foundation has been proven in-game. `F7` opens the Hide + Seek overlay, Big Walk's camera/player input is gated with `ControlsManager.SetMenuMode`, the cursor is freed, and closing the overlay restores normal controls.
+The Loader/Core architecture and automatic updater are proven in-game.
 
-The project is now split into two assemblies:
+Current versions:
 
-- `BigWalkHideSeek.Loader.dll` — tiny permanent BepInEx plugin; checks for Core updates and then loads Core.
-- `BigWalkHideSeek.Core.dll` — updateable game/UI logic; future map, missions, questions, Firebase, sabotages, etc. live here.
+- `BigWalkHideSeek.Loader.dll` — **0.1.1**
+- Published update-feed Core — **0.0.7**
+- `mod-prototype` map-test Core source — **0.0.8**
 
-Installed layout:
+`F7` opens the full-screen Hide + Seek overlay. While it is open, Big Walk camera/player input is gated with `ControlsManager.SetMenuMode(true)`, the mouse is freed, and the native Big Walk menu does not open underneath. Closing the overlay restores normal controls.
+
+Core 0.0.8 is the first real in-game map build. It adds:
+
+- the full `big-walk-map.png` embedded directly into Core;
+- drag-to-pan;
+- mouse-wheel zoom;
+- Fit, Center Me, zoom-in, and zoom-out controls;
+- a live local-player marker read directly from Big Walk;
+- the same Unity -> Big Walk coordinate conversion used by the proven live-position tracker;
+- the same Big Walk -> map-pixel calibration used by the web map.
+
+The map and future gameplay/UI features live in Core so they can be delivered through the updater without replacing the permanent Loader.
+
+## Installed layout
 
 ```text
 BepInEx/
@@ -20,74 +35,71 @@ BepInEx/
 │       └── BigWalkHideSeek.Loader.dll
 └── BigWalkHideSeek/
     ├── BigWalkHideSeek.Core.dll
-    ├── BigWalkHideSeek.Core.backup.dll   (created after the first successful update)
+    ├── BigWalkHideSeek.Core.backup.dll
     └── updater-config.json
 ```
 
 Core deliberately lives outside `BepInEx\plugins` so BepInEx does not inspect/load it before the Loader has a chance to replace it.
 
-## One-time migration test
+## Testing Core 0.0.8 locally
 
-1. Download the latest `mod-prototype` branch.
-2. Run `configure_profile.bat` and select the Thunderstore profile containing `BepInEx`.
+1. Download or update to the latest `mod-prototype` branch.
+2. If needed, run `configure_profile.bat` and select the Thunderstore profile containing BepInEx 6 IL2CPP.
 3. Run `build_and_install.bat`.
-4. The script removes the old all-in-one `BigWalkHideSeek.dll`, builds Loader + Core, and installs both.
-5. Launch Big Walk with **Start modded**.
-6. Press `F7`.
+4. Launch Big Walk with **Start modded**.
+5. Press `F7`.
 
-The test overlay should say:
+Expected result:
 
-`AUTO-UPDATE CORE TEST · v0.0.6`
+- the Big Walk map fills the overlay viewport;
+- dragging pans the map;
+- the mouse wheel zooms around the cursor;
+- `FIT` restores the full-map view;
+- `CENTER ME` centers the live player marker;
+- the top bar reports live Big Walk X/Y coordinates once the player is found;
+- Big Walk movement/camera input remains disabled while the overlay is open;
+- `F7`, `Esc`, or `CLOSE` returns to the game normally.
 
-It should behave exactly like the proven v0.0.5 overlay: no native Big Walk menu behind it, no camera/player input while open, free mouse cursor, and normal controls after closing.
+If the player is not immediately available, Core searches once per second for a `Rigidbody` whose GameObject name begins with `PlayerCharacter `, matching the proven tracker approach.
 
-## How the updater works
+## Automatic Core updater
 
-At game startup the Loader:
+At game startup Loader 0.1.1:
 
-1. finds `BepInEx\BigWalkHideSeek\updater-config.json`;
-2. reads the private manifest URL;
+1. reads `BepInEx\BigWalkHideSeek\updater-config.json`;
+2. fetches the update manifest;
 3. compares the installed Core version with the manifest version;
 4. downloads a newer Core when available;
-5. verifies its SHA-256 hash;
-6. backs up the previous Core;
-7. replaces Core before Core is loaded;
-8. loads the current Core and starts the Hide + Seek UI.
+5. decodes the package when required;
+6. verifies the decoded DLL's SHA-256 hash;
+7. backs up the previous Core;
+8. replaces Core before loading it;
+9. loads the current Core and starts the Hide + Seek UI.
 
-If the update server is unavailable, the Loader simply uses the installed Core. If a newly installed Core cannot load, the previous backup is restored on disk for the next launch.
+The current feed uses `"encoding": "gzip-base64"`. This packaging exists because publishing raw DLL bytes through the GitHub connector altered binary data during earlier tests. The gzip + base64 path has been proven successfully with the automatic Core 0.0.6 -> 0.0.7 update.
 
-## Private host still to choose
+If the update server is unavailable, Loader uses the installed Core. If a newly installed Core cannot load, the previous backup is restored on disk for the next launch.
 
-`updater-config.json` is intentionally created with a blank `manifestUrl` for now. The updater code is in place, but we still need to choose the friends-only HTTPS host/authentication method before turning remote updates on.
-
-The config supports:
-
-```json
-{
-  "enabled": true,
-  "manifestUrl": "https://private-host.example/latest.json",
-  "bearerToken": "optional-read-token",
-  "timeoutSeconds": 4
-}
-```
-
-No public mod binary needs to be hosted just to test Loader -> Core locally.
-
-## Preparing a future Core update
+## Preparing a Core update
 
 After changing the Core version/source, run:
 
 ```text
-prepare_update.bat "https://PRIVATE_HOST/BigWalkHideSeek.Core.dll"
+prepare_update.bat
 ```
 
-That creates a `publish` folder containing:
+That builds Core and creates a `publish` folder containing:
 
 - `BigWalkHideSeek.Core.dll`
+- `BigWalkHideSeek.Core.gz.b64`
 - `latest.json`
 
-The manifest contains the Core version, download URL, and SHA-256 hash. Once private hosting is selected, publishing those two files is enough for installed Loaders to update automatically.
+`latest.json` contains the Core version, gzip/base64 package URL, SHA-256 hash of the decoded DLL, and the `gzip-base64` encoding declaration.
 
-## Next step
+Do not publish a new Core to the update feed until that build has been tested locally in Big Walk.
 
-First verify that the Loader successfully starts Core v0.0.6 in-game. Then connect the updater to a private host and prove one real automatic update (for example Core v0.0.6 -> v0.0.7) before beginning the full map port.
+## Branch policy
+
+- In-game mod development: `mod-prototype`
+- Core update feed: `bw-hs-feed-7c41e9`
+- Stable web root is separate and should not be changed or promoted as part of in-game mod work.
