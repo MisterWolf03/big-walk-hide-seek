@@ -14,7 +14,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.10 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.11 configured.");
     }
 }
 
@@ -30,6 +30,21 @@ public class HideSeekOverlay : MonoBehaviour
     private const double MapD = -0.00223877926;
     private const double MapE = 1.01939961;
     private const double MapF = -3130.54945;
+
+    private static readonly MapFeature[] Towers = new[]
+    {
+        new MapFeature("Red", 1405f, 3669f, new Color(228f / 255f, 90f / 255f, 84f / 255f)),
+        new MapFeature("Yellow", 1571f, 3306f, new Color(242f / 255f, 189f / 255f, 46f / 255f)),
+        new MapFeature("Green", 1908f, 3937f, new Color(55f / 255f, 180f / 255f, 135f / 255f)),
+        new MapFeature("Black", 1676f, 3482f, new Color(32f / 255f, 32f / 255f, 36f / 255f)),
+        new MapFeature("Blue", 1853f, 3542f, new Color(38f / 255f, 143f / 255f, 208f / 255f))
+    };
+
+    private static readonly MapFeature[] Landmarks = new[]
+    {
+        new MapFeature("Purple Tunnel", 1897f, 4286f, new Color(155f / 255f, 93f / 255f, 229f / 255f)),
+        new MapFeature("Microphone", 1235f, 3408f, new Color(1f, 79f / 255f, 163f / 255f))
+    };
 
     private bool overlayOpen;
     private bool previousCursorVisible;
@@ -47,6 +62,9 @@ public class HideSeekOverlay : MonoBehaviour
 
     private float zoom = 1f;
     private Vector2 pan = Vector2.zero;
+    private bool showGrid = true;
+    private bool showTowers = true;
+    private bool showLandmarks = true;
 
     private GUIStyle titleStyle;
     private GUIStyle subtitleStyle;
@@ -55,6 +73,11 @@ public class HideSeekOverlay : MonoBehaviour
     private GUIStyle markerStyle;
     private GUIStyle markerShadowStyle;
     private GUIStyle mapMessageStyle;
+    private GUIStyle gridLabelStyle;
+    private GUIStyle featureOutlineStyle;
+    private GUIStyle featureGlyphStyle;
+    private GUIStyle featureLabelStyle;
+    private GUIStyle coordinateStyle;
 
     public void Update()
     {
@@ -184,11 +207,6 @@ public class HideSeekOverlay : MonoBehaviour
 
             mapTexture = new Texture2D(width, height, TextureFormat.BGRA32, false);
             Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pixelBytes);
-
-            // Unity 6's ImageConversion.LoadImage now crosses the native boundary
-            // with ReadOnlySpan<byte>, which this game's generated IL2CPP interop
-            // cannot invoke. The map is decoded at build time instead, so runtime
-            // only needs Unity's ordinary byte-array raw texture upload path.
             mapTexture.LoadRawTextureData(il2cppBytes);
             mapTexture.Apply(false, true);
             mapTexture.wrapMode = TextureWrapMode.Clamp;
@@ -280,6 +298,16 @@ public class HideSeekOverlay : MonoBehaviour
         return new Vector2(px, py);
     }
 
+    private static Vector2 MapPixelToGame(float px, float py)
+    {
+        double det = MapA * MapE - MapB * MapD;
+        double shiftedX = px - MapC;
+        double shiftedY = py - MapF;
+        float x = (float)((MapE * shiftedX - MapB * shiftedY) / det);
+        float y = (float)((-MapD * shiftedX + MapA * shiftedY) / det);
+        return new Vector2(x, y);
+    }
+
     public void OnGUI()
     {
         if (!overlayOpen)
@@ -313,7 +341,7 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawTopBar()
     {
         GUI.Label(new Rect(18f, 8f, 430f, 30f), "BIG WALK HIDE + SEEK", titleStyle);
-        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.10", subtitleStyle);
+        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.11", subtitleStyle);
 
         string status = hasPlayerPosition
             ? $"LIVE  ·  X {gameX:0}   Y {gameY:0}"
@@ -339,39 +367,79 @@ public class HideSeekOverlay : MonoBehaviour
             return;
         }
 
-        Rect controlRectGlobal = new Rect(viewport.x + 12f, viewport.y + 12f, 348f, 40f);
+        const float controlWidth = 586f;
+        Rect controlRectGlobal = new Rect(viewport.x + 10f, viewport.y + 10f, controlWidth, 42f);
         HandleMapInput(viewport, controlRectGlobal);
+
+        Event evt = Event.current;
+        Vector2 globalMouse = evt != null ? evt.mousePosition : new Vector2(-1000f, -1000f);
+        bool canShowCoordinateTip = viewport.Contains(globalMouse) && !controlRectGlobal.Contains(globalMouse);
+        Vector2 localMouse = new Vector2(globalMouse.x - viewport.x, globalMouse.y - viewport.y);
 
         GUI.BeginGroup(viewport);
 
         Rect mapRect = GetMapRect(viewport.width, viewport.height);
         GUI.DrawTexture(mapRect, mapTexture, ScaleMode.StretchToFill, false);
 
+        if (showGrid)
+            DrawGrid(mapRect);
+        if (showTowers)
+            DrawFeatures(mapRect, Towers, false);
+        if (showLandmarks)
+            DrawFeatures(mapRect, Landmarks, true);
         if (hasPlayerPosition)
             DrawPlayerMarker(mapRect);
 
         GUI.backgroundColor = new Color(0.08f, 0.095f, 0.12f, 0.96f);
-        GUI.Box(new Rect(10f, 10f, 350f, 42f), GUIContent.none);
+        GUI.Box(new Rect(10f, 10f, controlWidth, 42f), GUIContent.none);
         GUI.backgroundColor = Color.white;
 
-        if (GUI.Button(new Rect(16f, 15f, 62f, 32f), "FIT"))
+        float x = 16f;
+        if (GUI.Button(new Rect(x, 15f, 54f, 32f), "FIT"))
             FitMap();
+        x += 60f;
 
         GUI.enabled = hasPlayerPosition;
-        if (GUI.Button(new Rect(84f, 15f, 102f, 32f), "CENTER ME"))
+        if (GUI.Button(new Rect(x, 15f, 96f, 32f), "CENTER ME"))
             CenterOnPlayer(viewport.width, viewport.height);
         GUI.enabled = true;
+        x += 102f;
 
-        if (GUI.Button(new Rect(192f, 15f, 42f, 32f), "−"))
+        if (GUI.Button(new Rect(x, 15f, 36f, 32f), "−"))
             ZoomAt(viewport.width, viewport.height, new Vector2(viewport.width * 0.5f, viewport.height * 0.5f), 1f / 1.25f);
+        x += 42f;
 
-        if (GUI.Button(new Rect(240f, 15f, 42f, 32f), "+"))
+        if (GUI.Button(new Rect(x, 15f, 36f, 32f), "+"))
             ZoomAt(viewport.width, viewport.height, new Vector2(viewport.width * 0.5f, viewport.height * 0.5f), 1.25f);
+        x += 42f;
 
-        GUI.Label(new Rect(291f, 19f, 60f, 24f), $"{zoom:0.0}×", hintStyle);
-        GUI.Label(new Rect(12f, viewport.height - 28f, 520f, 20f), "Drag to pan  ·  Mouse wheel to zoom  ·  F7/Esc close", hintStyle);
+        GUI.Label(new Rect(x, 19f, 52f, 24f), $"{zoom:0.0}×", hintStyle);
+        x += 64f;
+
+        showGrid = DrawToggleButton(new Rect(x, 15f, 64f, 32f), "GRID", showGrid);
+        x += 70f;
+        showTowers = DrawToggleButton(new Rect(x, 15f, 80f, 32f), "TOWERS", showTowers);
+        x += 86f;
+        showLandmarks = DrawToggleButton(new Rect(x, 15f, 104f, 32f), "LANDMARKS", showLandmarks);
+
+        if (canShowCoordinateTip)
+            DrawCoordinateTip(localMouse, mapRect, viewport.width, viewport.height);
+
+        GUI.Label(new Rect(12f, viewport.height - 28f, 700f, 20f), "Drag to pan  ·  Mouse wheel to zoom  ·  Hover for Y/X coordinates  ·  F7/Esc close", hintStyle);
 
         GUI.EndGroup();
+    }
+
+    private bool DrawToggleButton(Rect rect, string label, bool value)
+    {
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = value
+            ? new Color(0.28f, 0.47f, 0.34f, 1f)
+            : new Color(0.16f, 0.18f, 0.22f, 1f);
+
+        bool clicked = GUI.Button(rect, label);
+        GUI.backgroundColor = oldBackground;
+        return clicked ? !value : value;
     }
 
     private Rect GetMapRect(float viewportWidth, float viewportHeight)
@@ -383,6 +451,107 @@ public class HideSeekOverlay : MonoBehaviour
         float x = (viewportWidth - width) * 0.5f + pan.x;
         float y = (viewportHeight - height) * 0.5f + pan.y;
         return new Rect(x, y, width, height);
+    }
+
+    private Vector2 GameToOverlayPoint(Rect mapRect, float x, float y)
+    {
+        Vector2 pixel = GameToMapPixel(x, y);
+        return new Vector2(
+            mapRect.x + (pixel.x / mapTexture.width) * mapRect.width,
+            mapRect.y + (pixel.y / mapTexture.height) * mapRect.height
+        );
+    }
+
+    private void DrawGrid(Rect mapRect)
+    {
+        Color lineColor = new Color(1f, 1f, 1f, 0.62f);
+
+        for (int x = 1000; x <= 2400; x += 100)
+        {
+            Vector2 a = GameToOverlayPoint(mapRect, x, 3000f);
+            Vector2 b = GameToOverlayPoint(mapRect, x, 4600f);
+            DrawLine(a, b, lineColor, 1f);
+
+            Vector2 label = GameToOverlayPoint(mapRect, x, 3110f);
+            GUI.Label(new Rect(label.x + 3f, label.y - 9f, 34f, 18f), (x / 100).ToString(), gridLabelStyle);
+        }
+
+        for (int y = 3100; y <= 4500; y += 100)
+        {
+            Vector2 a = GameToOverlayPoint(mapRect, 900f, y);
+            Vector2 b = GameToOverlayPoint(mapRect, 2500f, y);
+            DrawLine(a, b, lineColor, 1f);
+
+            Vector2 label = GameToOverlayPoint(mapRect, 1005f, y);
+            GUI.Label(new Rect(label.x + 3f, label.y - 16f, 34f, 18f), (y / 100).ToString(), gridLabelStyle);
+        }
+    }
+
+    private void DrawFeatures(Rect mapRect, MapFeature[] features, bool diamond)
+    {
+        string glyph = diamond ? "◆" : "●";
+
+        foreach (MapFeature feature in features)
+        {
+            Vector2 point = GameToOverlayPoint(mapRect, feature.X, feature.Y);
+            Rect glyphRect = new Rect(point.x - 16f, point.y - 17f, 32f, 32f);
+
+            Color oldColor = GUI.color;
+            GUI.color = Color.white;
+            GUI.Label(glyphRect, glyph, featureOutlineStyle);
+            GUI.color = feature.Color;
+            GUI.Label(glyphRect, glyph, featureGlyphStyle);
+
+            Rect textRect = new Rect(point.x + 14f, point.y - 10f, 160f, 24f);
+            GUI.color = new Color(0f, 0f, 0f, 0.9f);
+            GUI.Label(new Rect(textRect.x - 1f, textRect.y, textRect.width, textRect.height), feature.Name, featureLabelStyle);
+            GUI.Label(new Rect(textRect.x + 1f, textRect.y, textRect.width, textRect.height), feature.Name, featureLabelStyle);
+            GUI.Label(new Rect(textRect.x, textRect.y - 1f, textRect.width, textRect.height), feature.Name, featureLabelStyle);
+            GUI.Label(new Rect(textRect.x, textRect.y + 1f, textRect.width, textRect.height), feature.Name, featureLabelStyle);
+            GUI.color = Color.white;
+            GUI.Label(textRect, feature.Name, featureLabelStyle);
+            GUI.color = oldColor;
+        }
+    }
+
+    private void DrawCoordinateTip(Vector2 localMouse, Rect mapRect, float viewportWidth, float viewportHeight)
+    {
+        if (!mapRect.Contains(localMouse))
+            return;
+
+        float px = ((localMouse.x - mapRect.x) / mapRect.width) * mapTexture.width;
+        float py = ((localMouse.y - mapRect.y) / mapRect.height) * mapTexture.height;
+        Vector2 game = MapPixelToGame(px, py);
+
+        const float width = 154f;
+        const float height = 28f;
+        float tipX = Mathf.Clamp(localMouse.x + 14f, 4f, Mathf.Max(4f, viewportWidth - width - 4f));
+        float tipY = Mathf.Clamp(localMouse.y + 14f, 4f, Mathf.Max(4f, viewportHeight - height - 4f));
+        Rect tip = new Rect(tipX, tipY, width, height);
+
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.03f, 0.04f, 0.055f, 0.96f);
+        GUI.Box(tip, GUIContent.none);
+        GUI.backgroundColor = oldBackground;
+        GUI.Label(tip, $"Y {game.y:0}, X {game.x:0}", coordinateStyle);
+    }
+
+    private static void DrawLine(Vector2 start, Vector2 end, Color color, float width)
+    {
+        Vector2 delta = end - start;
+        float length = delta.magnitude;
+        if (length < 0.01f)
+            return;
+
+        Matrix4x4 oldMatrix = GUI.matrix;
+        Color oldColor = GUI.color;
+        float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+
+        GUIUtility.RotateAroundPivot(angle, start);
+        GUI.color = color;
+        GUI.DrawTexture(new Rect(start.x, start.y - width * 0.5f, length, width), Texture2D.whiteTexture);
+        GUI.matrix = oldMatrix;
+        GUI.color = oldColor;
     }
 
     private void DrawPlayerMarker(Rect mapRect)
@@ -539,6 +708,46 @@ public class HideSeekOverlay : MonoBehaviour
             alignment = TextAnchor.MiddleCenter,
             normal = { textColor = new Color(0.9f, 0.93f, 0.97f) }
         };
+
+        gridLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = new Color(1f, 1f, 1f, 0.9f) }
+        };
+
+        featureOutlineStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 29,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
+
+        featureGlyphStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 22,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
+
+        featureLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = Color.white }
+        };
+
+        coordinateStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
     }
 
     public void OnDestroy()
@@ -550,6 +759,22 @@ public class HideSeekOverlay : MonoBehaviour
         {
             UnityEngine.Object.Destroy(mapTexture);
             mapTexture = null;
+        }
+    }
+
+    private sealed class MapFeature
+    {
+        public readonly string Name;
+        public readonly float X;
+        public readonly float Y;
+        public readonly Color Color;
+
+        public MapFeature(string name, float x, float y, Color color)
+        {
+            Name = name;
+            X = x;
+            Y = y;
+            Color = color;
         }
     }
 }
