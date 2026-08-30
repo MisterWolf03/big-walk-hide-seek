@@ -5,9 +5,9 @@
     <Nullable>disable</Nullable>
     <AssemblyName>BigWalkHideSeek.Core</AssemblyName>
     <RootNamespace>BigWalkHideSeek.Core</RootNamespace>
-    <Version>0.0.9</Version>
-    <AssemblyVersion>0.0.9.0</AssemblyVersion>
-    <FileVersion>0.0.9.0</FileVersion>
+    <Version>0.0.10</Version>
+    <AssemblyVersion>0.0.10.0</AssemblyVersion>
+    <FileVersion>0.0.10.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,17 +41,18 @@
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.TextRenderingModule.dll</HintPath>
     </Reference>
-    <Reference Include="UnityEngine.ImageConversionModule">
-      <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.ImageConversionModule.dll</HintPath>
-    </Reference>
     <Reference Include="UnityEngine.PhysicsModule">
       <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.PhysicsModule.dll</HintPath>
     </Reference>
   </ItemGroup>
 
+  <Target Name="PrepareBigWalkMapAsset" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\prepare_map_asset.ps1&quot; -InputPath &quot;$(MSBuildProjectDirectory)\..\..\big-walk-map.png&quot; -OutputPath &quot;$(MSBuildProjectDirectory)\generated\big-walk-map.bgra&quot;" />
+  </Target>
+
   <ItemGroup>
-    <EmbeddedResource Include="..\..\big-walk-map.png">
-      <LogicalName>BigWalkHideSeek.Core.big-walk-map.png</LogicalName>
+    <EmbeddedResource Include="generated\big-walk-map.bgra">
+      <LogicalName>BigWalkHideSeek.Core.big-walk-map.bgra</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 </Project>
