@@ -1,0 +1,43 @@
+name: Build Updater Prototype
+
+on:
+  push:
+    branches:
+      - mod-prototype
+    paths:
+      - "updater-app/**"
+      - ".github/workflows/build-updater.yml"
+  workflow_dispatch:
+
+jobs:
+  build-updater:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish standalone updater
+        shell: pwsh
+        run: |
+          dotnet publish updater-app/BigWalkHideSeek.Updater.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -o updater-publish
+
+      - name: Upload updater artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BigWalkHideSeek-Updater-win-x64
+          path: updater-publish/BigWalkHideSeek.Updater.exe
+          if-no-files-found: error
