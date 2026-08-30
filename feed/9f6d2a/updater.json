@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "loader": {
+    "version": "0.1.1.0",
+    "url": "https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Loader.gz.b64",
+    "sha256": "b4825436c31bad136e4dbd7c96bb4539bfaa72829350b30a266355c881e8f96e",
+    "encoding": "gzip-base64"
+  },
+  "core": {
+    "version": "0.0.10.0",
+    "url": "https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Core.gz.b64",
+    "sha256": "4b00823f9e53519e2ee664573f604fce7eecd69db327373916b62f920b31bafa",
+    "encoding": "gzip-base64"
+  },
+  "releaseNotes": "First standalone updater-compatible release. Installs Loader 0.1.1 and Core 0.0.10."
+}
