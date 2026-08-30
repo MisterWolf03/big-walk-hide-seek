@@ -14,7 +14,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.11 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.12 configured.");
     }
 }
 
@@ -23,7 +23,6 @@ public class HideSeekOverlay : MonoBehaviour
     private const string MapResourceName = "BigWalkHideSeek.Core.big-walk-map.bgra";
     private const float InvSqrt2 = 0.70710678118f;
 
-    // Same game-coordinate -> map-pixel calibration used by the web app.
     private const double MapA = 1.01872096;
     private const double MapB = 0.00000814424539;
     private const double MapC = -934.160388;
@@ -98,7 +97,6 @@ public class HideSeekOverlay : MonoBehaviour
 
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
-
         EnsureMapTexture();
         UpdatePlayerPosition();
     }
@@ -130,44 +128,20 @@ public class HideSeekOverlay : MonoBehaviour
 
     private static void EnterOverlayInputMode()
     {
-        try
-        {
-            ControlsManager.SetMenuMode(true);
-        }
-        catch (Exception ex)
-        {
-            CoreEntry.Logger?.LogWarning($"ControlsManager.SetMenuMode(true) failed: {ex.Message}");
-        }
+        try { ControlsManager.SetMenuMode(true); }
+        catch (Exception ex) { CoreEntry.Logger?.LogWarning($"ControlsManager.SetMenuMode(true) failed: {ex.Message}"); }
 
-        try
-        {
-            CursorManager.SetFree();
-        }
-        catch (Exception ex)
-        {
-            CoreEntry.Logger?.LogWarning($"CursorManager.SetFree failed: {ex.Message}");
-        }
+        try { CursorManager.SetFree(); }
+        catch (Exception ex) { CoreEntry.Logger?.LogWarning($"CursorManager.SetFree failed: {ex.Message}"); }
     }
 
     private static void ExitOverlayInputMode()
     {
-        try
-        {
-            ControlsManager.SetMenuMode(false);
-        }
-        catch (Exception ex)
-        {
-            CoreEntry.Logger?.LogWarning($"ControlsManager.SetMenuMode(false) failed: {ex.Message}");
-        }
+        try { ControlsManager.SetMenuMode(false); }
+        catch (Exception ex) { CoreEntry.Logger?.LogWarning($"ControlsManager.SetMenuMode(false) failed: {ex.Message}"); }
 
-        try
-        {
-            CursorManager.SetLocked();
-        }
-        catch (Exception ex)
-        {
-            CoreEntry.Logger?.LogWarning($"CursorManager.SetLocked failed: {ex.Message}");
-        }
+        try { CursorManager.SetLocked(); }
+        catch (Exception ex) { CoreEntry.Logger?.LogWarning($"CursorManager.SetLocked failed: {ex.Message}"); }
     }
 
     private void EnsureMapTexture()
@@ -202,8 +176,6 @@ public class HideSeekOverlay : MonoBehaviour
 
             byte[] pixelBytes = new byte[(int)expectedPixelBytes];
             Buffer.BlockCopy(packed, 8, pixelBytes, 0, pixelBytes.Length);
-
-            CoreEntry.Logger?.LogInfo($"Embedded raw map read: {width}x{height}, {pixelBytes.Length} BGRA bytes.");
 
             mapTexture = new Texture2D(width, height, TextureFormat.BGRA32, false);
             Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pixelBytes);
@@ -270,7 +242,6 @@ public class HideSeekOverlay : MonoBehaviour
             {
                 if (rb == null || rb.gameObject == null)
                     continue;
-
                 if (!rb.gameObject.name.StartsWith("PlayerCharacter ", StringComparison.Ordinal))
                     continue;
 
@@ -293,9 +264,10 @@ public class HideSeekOverlay : MonoBehaviour
 
     private static Vector2 GameToMapPixel(float x, float y)
     {
-        float px = (float)(MapA * x + MapB * y + MapC);
-        float py = (float)(MapD * x + MapE * y + MapF);
-        return new Vector2(px, py);
+        return new Vector2(
+            (float)(MapA * x + MapB * y + MapC),
+            (float)(MapD * x + MapE * y + MapF)
+        );
     }
 
     private static Vector2 MapPixelToGame(float px, float py)
@@ -303,9 +275,10 @@ public class HideSeekOverlay : MonoBehaviour
         double det = MapA * MapE - MapB * MapD;
         double shiftedX = px - MapC;
         double shiftedY = py - MapF;
-        float x = (float)((MapE * shiftedX - MapB * shiftedY) / det);
-        float y = (float)((-MapD * shiftedX + MapA * shiftedY) / det);
-        return new Vector2(x, y);
+        return new Vector2(
+            (float)((MapE * shiftedX - MapB * shiftedY) / det),
+            (float)((-MapD * shiftedX + MapA * shiftedY) / det)
+        );
     }
 
     public void OnGUI()
@@ -315,7 +288,6 @@ public class HideSeekOverlay : MonoBehaviour
 
         EnsureStyles();
         EnsureMapTexture();
-
         GUI.depth = -10000;
 
         Color oldColor = GUI.color;
@@ -326,7 +298,6 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.color = Color.white;
 
         DrawTopBar();
-
         Rect viewport = new Rect(14f, 66f, Mathf.Max(100f, Screen.width - 28f), Mathf.Max(100f, Screen.height - 90f));
         DrawMap(viewport);
 
@@ -341,7 +312,7 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawTopBar()
     {
         GUI.Label(new Rect(18f, 8f, 430f, 30f), "BIG WALK HIDE + SEEK", titleStyle);
-        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.11", subtitleStyle);
+        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.12", subtitleStyle);
 
         string status = hasPlayerPosition
             ? $"LIVE  ·  X {gameX:0}   Y {gameY:0}"
@@ -395,13 +366,11 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.backgroundColor = Color.white;
 
         float x = 16f;
-        if (GUI.Button(new Rect(x, 15f, 54f, 32f), "FIT"))
-            FitMap();
+        if (GUI.Button(new Rect(x, 15f, 54f, 32f), "FIT")) FitMap();
         x += 60f;
 
         GUI.enabled = hasPlayerPosition;
-        if (GUI.Button(new Rect(x, 15f, 96f, 32f), "CENTER ME"))
-            CenterOnPlayer(viewport.width, viewport.height);
+        if (GUI.Button(new Rect(x, 15f, 96f, 32f), "CENTER ME")) CenterOnPlayer(viewport.width, viewport.height);
         GUI.enabled = true;
         x += 102f;
 
@@ -426,7 +395,6 @@ public class HideSeekOverlay : MonoBehaviour
             DrawCoordinateTip(localMouse, mapRect, viewport.width, viewport.height);
 
         GUI.Label(new Rect(12f, viewport.height - 28f, 700f, 20f), "Drag to pan  ·  Mouse wheel to zoom  ·  Hover for Y/X coordinates  ·  F7/Esc close", hintStyle);
-
         GUI.EndGroup();
     }
 
@@ -436,7 +404,6 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.backgroundColor = value
             ? new Color(0.28f, 0.47f, 0.34f, 1f)
             : new Color(0.16f, 0.18f, 0.22f, 1f);
-
         bool clicked = GUI.Button(rect, label);
         GUI.backgroundColor = oldBackground;
         return clicked ? !value : value;
@@ -448,9 +415,12 @@ public class HideSeekOverlay : MonoBehaviour
         float scale = baseScale * zoom;
         float width = mapTexture.width * scale;
         float height = mapTexture.height * scale;
-        float x = (viewportWidth - width) * 0.5f + pan.x;
-        float y = (viewportHeight - height) * 0.5f + pan.y;
-        return new Rect(x, y, width, height);
+        return new Rect(
+            (viewportWidth - width) * 0.5f + pan.x,
+            (viewportHeight - height) * 0.5f + pan.y,
+            width,
+            height
+        );
     }
 
     private Vector2 GameToOverlayPoint(Rect mapRect, float x, float y)
@@ -465,26 +435,44 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawGrid(Rect mapRect)
     {
         Color lineColor = new Color(1f, 1f, 1f, 0.62f);
+        const float lineWidth = 1f;
+
+        Color oldColor = GUI.color;
+        GUI.color = lineColor;
 
         for (int x = 1000; x <= 2400; x += 100)
         {
             Vector2 a = GameToOverlayPoint(mapRect, x, 3000f);
             Vector2 b = GameToOverlayPoint(mapRect, x, 4600f);
-            DrawLine(a, b, lineColor, 1f);
+            float lineX = (a.x + b.x) * 0.5f;
+            float yMin = Mathf.Max(mapRect.yMin, Mathf.Min(a.y, b.y));
+            float yMax = Mathf.Min(mapRect.yMax, Mathf.Max(a.y, b.y));
+
+            if (lineX >= mapRect.xMin && lineX <= mapRect.xMax && yMax > yMin)
+                GUI.DrawTexture(new Rect(lineX - lineWidth * 0.5f, yMin, lineWidth, yMax - yMin), Texture2D.whiteTexture);
 
             Vector2 label = GameToOverlayPoint(mapRect, x, 3110f);
-            GUI.Label(new Rect(label.x + 3f, label.y - 9f, 34f, 18f), (x / 100).ToString(), gridLabelStyle);
+            if (label.x >= mapRect.xMin && label.x <= mapRect.xMax && label.y >= mapRect.yMin && label.y <= mapRect.yMax)
+                GUI.Label(new Rect(label.x + 3f, label.y - 9f, 34f, 18f), (x / 100).ToString(), gridLabelStyle);
         }
 
         for (int y = 3100; y <= 4500; y += 100)
         {
             Vector2 a = GameToOverlayPoint(mapRect, 900f, y);
             Vector2 b = GameToOverlayPoint(mapRect, 2500f, y);
-            DrawLine(a, b, lineColor, 1f);
+            float lineY = (a.y + b.y) * 0.5f;
+            float xMin = Mathf.Max(mapRect.xMin, Mathf.Min(a.x, b.x));
+            float xMax = Mathf.Min(mapRect.xMax, Mathf.Max(a.x, b.x));
+
+            if (lineY >= mapRect.yMin && lineY <= mapRect.yMax && xMax > xMin)
+                GUI.DrawTexture(new Rect(xMin, lineY - lineWidth * 0.5f, xMax - xMin, lineWidth), Texture2D.whiteTexture);
 
             Vector2 label = GameToOverlayPoint(mapRect, 1005f, y);
-            GUI.Label(new Rect(label.x + 3f, label.y - 16f, 34f, 18f), (y / 100).ToString(), gridLabelStyle);
+            if (label.x >= mapRect.xMin && label.x <= mapRect.xMax && label.y >= mapRect.yMin && label.y <= mapRect.yMax)
+                GUI.Label(new Rect(label.x + 3f, label.y - 16f, 34f, 18f), (y / 100).ToString(), gridLabelStyle);
         }
+
+        GUI.color = oldColor;
     }
 
     private void DrawFeatures(Rect mapRect, MapFeature[] features, bool diamond)
@@ -494,9 +482,12 @@ public class HideSeekOverlay : MonoBehaviour
         foreach (MapFeature feature in features)
         {
             Vector2 point = GameToOverlayPoint(mapRect, feature.X, feature.Y);
-            Rect glyphRect = new Rect(point.x - 16f, point.y - 17f, 32f, 32f);
+            if (point.x < mapRect.xMin - 20f || point.x > mapRect.xMax + 20f || point.y < mapRect.yMin - 20f || point.y > mapRect.yMax + 20f)
+                continue;
 
+            Rect glyphRect = new Rect(point.x - 16f, point.y - 17f, 32f, 32f);
             Color oldColor = GUI.color;
+
             GUI.color = Color.white;
             GUI.Label(glyphRect, glyph, featureOutlineStyle);
             GUI.color = feature.Color;
@@ -536,31 +527,13 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.Label(tip, $"Y {game.y:0}, X {game.x:0}", coordinateStyle);
     }
 
-    private static void DrawLine(Vector2 start, Vector2 end, Color color, float width)
-    {
-        Vector2 delta = end - start;
-        float length = delta.magnitude;
-        if (length < 0.01f)
-            return;
-
-        Matrix4x4 oldMatrix = GUI.matrix;
-        Color oldColor = GUI.color;
-        float angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
-
-        GUIUtility.RotateAroundPivot(angle, start);
-        GUI.color = color;
-        GUI.DrawTexture(new Rect(start.x, start.y - width * 0.5f, length, width), Texture2D.whiteTexture);
-        GUI.matrix = oldMatrix;
-        GUI.color = oldColor;
-    }
-
     private void DrawPlayerMarker(Rect mapRect)
     {
         Vector2 pixel = GameToMapPixel(gameX, gameY);
         float sx = mapRect.x + (pixel.x / mapTexture.width) * mapRect.width;
         float sy = mapRect.y + (pixel.y / mapTexture.height) * mapRect.height;
 
-        if (sx < -30f || sy < -30f || sx > mapRect.xMax + 30f || sy > mapRect.yMax + 30f)
+        if (sx < mapRect.xMin - 30f || sy < mapRect.yMin - 30f || sx > mapRect.xMax + 30f || sy > mapRect.yMax + 30f)
             return;
 
         Rect shadow = new Rect(sx - 16f, sy - 19f, 32f, 32f);
@@ -615,12 +588,10 @@ public class HideSeekOverlay : MonoBehaviour
             return;
 
         zoom = newZoom;
-
         float baseScale = Mathf.Min(viewportWidth / mapTexture.width, viewportHeight / mapTexture.height);
         float newScale = baseScale * zoom;
         float centeredX = (viewportWidth - mapTexture.width * newScale) * 0.5f;
         float centeredY = (viewportHeight - mapTexture.height * newScale) * 0.5f;
-
         pan.x = localPoint.x - centeredX - mapPixel.x * newScale;
         pan.y = localPoint.y - centeredY - mapPixel.y * newScale;
     }
@@ -644,7 +615,6 @@ public class HideSeekOverlay : MonoBehaviour
         float scale = baseScale * zoom;
         float centeredX = (viewportWidth - mapTexture.width * scale) * 0.5f;
         float centeredY = (viewportHeight - mapTexture.height * scale) * 0.5f;
-
         pan.x = viewportWidth * 0.5f - centeredX - pixel.x * scale;
         pan.y = viewportHeight * 0.5f - centeredY - pixel.y * scale;
     }
