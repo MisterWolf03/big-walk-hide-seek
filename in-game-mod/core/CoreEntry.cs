@@ -1,9 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using BepInEx.Logging;
-using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 
@@ -16,13 +14,13 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.9 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.10 configured.");
     }
 }
 
 public class HideSeekOverlay : MonoBehaviour
 {
-    private const string MapResourceName = "BigWalkHideSeek.Core.big-walk-map.png";
+    private const string MapResourceName = "BigWalkHideSeek.Core.big-walk-map.bgra";
     private const float InvSqrt2 = 0.70710678118f;
 
     // Same game-coordinate -> map-pixel calibration used by the web app.
@@ -57,16 +55,6 @@ public class HideSeekOverlay : MonoBehaviour
     private GUIStyle markerStyle;
     private GUIStyle markerShadowStyle;
     private GUIStyle mapMessageStyle;
-
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.I1)]
-    private delegate bool LoadImageIcall(
-        IntPtr texture,
-        IntPtr data,
-        [MarshalAs(UnmanagedType.I1)] bool markNonReadable
-    );
-
-    private static LoadImageIcall loadImageIcall;
 
     public void Update()
     {
@@ -171,27 +159,42 @@ public class HideSeekOverlay : MonoBehaviour
             Assembly assembly = Assembly.GetExecutingAssembly();
             using Stream stream = assembly.GetManifestResourceStream(MapResourceName);
             if (stream == null)
-                throw new FileNotFoundException($"Embedded map resource '{MapResourceName}' was not found.");
+                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found.");
 
             using var memory = new MemoryStream();
             stream.CopyTo(memory);
-            byte[] pngBytes = memory.ToArray();
+            byte[] packed = memory.ToArray();
 
-            CoreEntry.Logger?.LogInfo($"Embedded map resource read: {pngBytes.Length} bytes.");
+            if (packed.Length < 8)
+                throw new InvalidDataException("Embedded raw map resource is too short.");
 
-            mapTexture = new Texture2D(2, 2);
-            Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pngBytes);
+            int width = BitConverter.ToInt32(packed, 0);
+            int height = BitConverter.ToInt32(packed, 4);
+            if (width <= 0 || height <= 0)
+                throw new InvalidDataException($"Embedded raw map has invalid dimensions: {width}x{height}.");
 
-            // Do NOT call ImageConversion.LoadImage here. On this Unity 6 / BepInEx
-            // interop combination its generated wrapper references
-            // Il2CppSystem.ReadOnlySpan<T>.GetPinnableReference(), which is missing at
-            // runtime. Invoke Unity's native ImageConversion icall directly instead.
-            if (!LoadImageDirect(mapTexture, il2cppBytes, false))
-                throw new InvalidDataException("Unity could not decode the embedded map PNG.");
+            long expectedPixelBytes = (long)width * height * 4L;
+            if (expectedPixelBytes > int.MaxValue || packed.Length != 8 + expectedPixelBytes)
+                throw new InvalidDataException($"Embedded raw map size mismatch. Expected {expectedPixelBytes} pixel bytes, got {packed.Length - 8}.");
 
+            byte[] pixelBytes = new byte[(int)expectedPixelBytes];
+            Buffer.BlockCopy(packed, 8, pixelBytes, 0, pixelBytes.Length);
+
+            CoreEntry.Logger?.LogInfo($"Embedded raw map read: {width}x{height}, {pixelBytes.Length} BGRA bytes.");
+
+            mapTexture = new Texture2D(width, height, TextureFormat.BGRA32, false);
+            Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pixelBytes);
+
+            // Unity 6's ImageConversion.LoadImage now crosses the native boundary
+            // with ReadOnlySpan<byte>, which this game's generated IL2CPP interop
+            // cannot invoke. The map is decoded at build time instead, so runtime
+            // only needs Unity's ordinary byte-array raw texture upload path.
+            mapTexture.LoadRawTextureData(il2cppBytes);
+            mapTexture.Apply(false, true);
             mapTexture.wrapMode = TextureWrapMode.Clamp;
             mapTexture.filterMode = FilterMode.Bilinear;
-            CoreEntry.Logger?.LogInfo($"Embedded Big Walk map loaded: {mapTexture.width}x{mapTexture.height}.");
+
+            CoreEntry.Logger?.LogInfo($"Embedded Big Walk map loaded from raw BGRA: {mapTexture.width}x{mapTexture.height}.");
         }
         catch (Exception ex)
         {
@@ -211,29 +214,6 @@ public class HideSeekOverlay : MonoBehaviour
         for (int i = 0; i < managedBytes.Length; i++)
             result[i] = managedBytes[i];
         return result;
-    }
-
-    private static bool LoadImageDirect(Texture2D texture, Il2CppStructArray<byte> data, bool markNonReadable)
-    {
-        if (loadImageIcall == null)
-        {
-            const string fullSignature = "UnityEngine.ImageConversion::LoadImage(UnityEngine.Texture2D,System.Byte[],System.Boolean)";
-            IntPtr icallPointer = IL2CPP.il2cpp_resolve_icall(fullSignature);
-
-            if (icallPointer == IntPtr.Zero)
-            {
-                const string shortSignature = "UnityEngine.ImageConversion::LoadImage";
-                icallPointer = IL2CPP.il2cpp_resolve_icall(shortSignature);
-            }
-
-            if (icallPointer == IntPtr.Zero)
-                throw new MissingMethodException("Could not resolve UnityEngine.ImageConversion::LoadImage native icall.");
-
-            loadImageIcall = Marshal.GetDelegateForFunctionPointer<LoadImageIcall>(icallPointer);
-            CoreEntry.Logger?.LogInfo("Resolved direct native ImageConversion::LoadImage icall.");
-        }
-
-        return loadImageIcall(texture.Pointer, data.Pointer, markNonReadable);
     }
 
     private void UpdatePlayerPosition()
@@ -333,7 +313,7 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawTopBar()
     {
         GUI.Label(new Rect(18f, 8f, 430f, 30f), "BIG WALK HIDE + SEEK", titleStyle);
-        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.9", subtitleStyle);
+        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.10", subtitleStyle);
 
         string status = hasPlayerPosition
             ? $"LIVE  ·  X {gameX:0}   Y {gameY:0}"
