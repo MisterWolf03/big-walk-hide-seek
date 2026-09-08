@@ -756,9 +756,10 @@ internal sealed class FirebaseRoomClient : IDisposable
 
     public void Dispose()
     {
+        // Requests are intentionally allowed to finish against managed synchronization
+        // primitives during game shutdown. Disposing the semaphores here can race an
+        // in-flight async finally block that still needs to Release() one of them.
         disposed = true;
-        authGate.Dispose();
-        matchWriteGate.Dispose();
     }
 
     internal sealed class RoomSnapshot
