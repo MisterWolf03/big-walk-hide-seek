@@ -1,0 +1,34 @@
+name: Apply Core 0.0.18 Mask Orientation Fix
+
+on:
+  push:
+    branches: [mod-prototype]
+    paths:
+      - '.github/workflows/apply-core-0.0.18-mask-orientation-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: mod-prototype
+          fetch-depth: 0
+
+      - name: Patch Core source
+        run: python dev-tools/apply_core_0_0_18_mask_orientation_fix.py
+
+      - name: Commit fix
+        run: |
+          if git diff --quiet; then
+            echo 'No changes produced.'
+            exit 1
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add in-game-mod/core/CoreEntry.cs in-game-mod/core/BigWalkHideSeek.Core.csproj
+          git commit -m 'Fix constraint mask vertical orientation'
+          git push origin HEAD:mod-prototype
