@@ -16,7 +16,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.24 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.25 configured.");
     }
 }
 
@@ -143,6 +143,11 @@ public class HideSeekOverlay : MonoBehaviour
     private Vector2 missionStart;
     private float missionDistance;
 
+    private FirebaseRoomClient roomClient;
+    private string roomDisplayName = "Player";
+    private string roomJoinCode = string.Empty;
+    private bool roomTextEditing;
+
     private GUIStyle brandStyle;
     private GUIStyle versionStyle;
     private GUIStyle statusStyle;
@@ -184,6 +189,7 @@ public class HideSeekOverlay : MonoBehaviour
     public void Update()
     {
         EnsureInitialized();
+        UpdateMultiplayer();
         UpdateMatchTimer();
 
         bool needsPosition = overlayOpen
@@ -215,7 +221,7 @@ public class HideSeekOverlay : MonoBehaviour
         UpdateMissionProgress();
         UpdateGameplayNotifications();
 
-        if (Input.GetKeyDown(KeyCode.M) || Input.GetKeyDown(KeyCode.F7))
+        if ((!roomTextEditing && Input.GetKeyDown(KeyCode.M)) || Input.GetKeyDown(KeyCode.F7))
         {
             SetOverlayOpen(!overlayOpen);
             return;
@@ -247,8 +253,58 @@ public class HideSeekOverlay : MonoBehaviour
             EnsureMapTexture();
     }
 
+
+    private void UpdateMultiplayer()
+    {
+        if (roomClient == null)
+            return;
+
+        roomClient.Tick();
+        if (!roomClient.IsConnected)
+            return;
+
+        PlayerRole syncedRole = string.Equals(roomClient.LocalRole, "hider", StringComparison.OrdinalIgnoreCase)
+            ? PlayerRole.Hider
+            : PlayerRole.Seeker;
+        if (selectedRole != syncedRole)
+            ApplySyncedRole(syncedRole);
+
+        if (!roomClient.IsHost)
+        {
+            FirebaseRoomClient.RoomSnapshot room = roomClient.Snapshot;
+            if (room != null)
+            {
+                matchRunning = room.MatchRunning;
+                matchElapsedSeconds = (float)roomClient.GetSyncedMatchSeconds();
+                matchLastTick = Time.unscaledTime;
+            }
+        }
+    }
+
+    private void PushMultiplayerMatchState()
+    {
+        if (roomClient != null && roomClient.IsConnected && roomClient.IsHost)
+            roomClient.BeginPushMatchState(matchRunning, matchElapsedSeconds);
+    }
+
+    private void ApplySyncedRole(PlayerRole role)
+    {
+        selectedRole = role;
+        if (selectedRole == PlayerRole.Hider && activeTab == UiTab.Questions)
+            activeTab = UiTab.Game;
+
+        previousCanAffordNearest = false;
+        previousCanAffordRadius = false;
+    }
+
     private void UpdateMatchTimer()
     {
+        if (roomClient != null && roomClient.IsConnected && !roomClient.IsHost)
+        {
+            matchLastTick = Time.unscaledTime;
+            return;
+        }
+
         float now = Time.unscaledTime;
         if (!matchRunning)
         {
@@ -266,6 +322,12 @@ public class HideSeekOverlay : MonoBehaviour
 
     private void StartOrResumeMatch()
     {
+        if (roomClient != null && roomClient.IsConnected && !roomClient.IsHost)
+        {
+            Notify("HOST CONTROLS TIMER", "Only the room host can start or resume the shared match timer.", AccentYellow, NotificationTone.Soft);
+            return;
+        }
+
         bool resuming = matchElapsedSeconds > 0.01f;
         matchLastTick = Time.unscaledTime;
         matchRunning = true;
@@ -273,10 +335,17 @@ public class HideSeekOverlay : MonoBehaviour
             resuming ? $"Timer resumed at {FormatTime(matchElapsedSeconds)}." : "The Hide + Seek timer is running.",
             AccentGreen, resuming ? NotificationTone.Normal : NotificationTone.Important);
         CoreEntry.Logger?.LogInfo(resuming ? "Hide + Seek match resumed." : "Hide + Seek match started.");
+        PushMultiplayerMatchState();
     }
 
     private void PauseMatch()
     {
+        if (roomClient != null && roomClient.IsConnected && !roomClient.IsHost)
+        {
+            Notify("HOST CONTROLS TIMER", "Only the room host can pause the shared match timer.", AccentYellow, NotificationTone.Soft);
+            return;
+        }
+
         if (!matchRunning)
             return;
 
@@ -284,10 +353,17 @@ public class HideSeekOverlay : MonoBehaviour
         matchRunning = false;
         Notify("MATCH PAUSED", $"Timer paused at {FormatTime(matchElapsedSeconds)}.", AccentYellow, NotificationTone.Normal);
         CoreEntry.Logger?.LogInfo("Hide + Seek match paused.");
+        PushMultiplayerMatchState();
     }
 
     private void ResetMatchState()
     {
+        if (roomClient != null && roomClient.IsConnected && !roomClient.IsHost)
+        {
+            Notify("HOST CONTROLS TIMER", "Only the room host can reset the shared match.", AccentYellow, NotificationTone.Soft);
+            return;
+        }
+
         matchRunning = false;
         matchElapsedSeconds = 0f;
         matchLastTick = Time.unscaledTime;
@@ -307,6 +383,7 @@ public class HideSeekOverlay : MonoBehaviour
         previousCanAffordRadius = false;
         Notify("MATCH RESET", "Timer, points, questions, constraints, and mission state were reset.", AccentYellow, NotificationTone.Important);
         CoreEntry.Logger?.LogInfo("Hide + Seek gameplay state reset.");
+        PushMultiplayerMatchState();
     }
 
     private void SetOverlayOpen(bool open)
@@ -393,7 +470,7 @@ public class HideSeekOverlay : MonoBehaviour
             }
 
             if (stream == null)
-                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.24.");
+                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.25.");
 
             using (stream)
             using (var memory = new MemoryStream())
@@ -534,6 +611,7 @@ public class HideSeekOverlay : MonoBehaviour
     {
         EnsureInitialized();
         EnsureStyles();
+        roomTextEditing = false;
         GUI.depth = -10000;
 
         Color oldColor = GUI.color;
@@ -743,10 +821,11 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.24", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.25", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
+        DrawTopTab(ref tabX, "ROOM", UiTab.Room, 64f);
         if (selectedRole == PlayerRole.Seeker)
             DrawTopTab(ref tabX, "QUESTIONS", UiTab.Questions, 88f);
         DrawTopTab(ref tabX, "MAP", UiTab.Map, 58f);
@@ -804,6 +883,10 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.Label(timerRect, time, bigNumberStyle);
         GUI.Label(new Rect(timerRect.x - 12f, 29f, 86f, 22f), matchRunning ? "RUNNING" : (matchElapsedSeconds > 0f ? "PAUSED" : "NOT STARTED"), timerStatusStyle);
 
+        bool previousEnabled = GUI.enabled;
+        bool canControlMatch = roomClient == null || !roomClient.IsConnected || roomClient.IsHost;
+        GUI.enabled = previousEnabled && canControlMatch;
+
         float x = rightEdge - 154f;
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
@@ -819,6 +902,7 @@ public class HideSeekOverlay : MonoBehaviour
         if (GUI.Button(new Rect(x + 60f, 13f, 56f, 30f), "RESET", compactButtonStyle))
             ResetMatchState();
         GUI.backgroundColor = oldBackground;
+        GUI.enabled = previousEnabled;
     }
 
     private void DrawMap(Rect viewport)
@@ -898,6 +982,9 @@ public class HideSeekOverlay : MonoBehaviour
                 break;
             case UiTab.Questions:
                 DrawQuestionsPanel(panel);
+                break;
+            case UiTab.Room:
+                DrawRoomPanel(panel);
                 break;
             case UiTab.Map:
                 DrawNavigationPanel(panel);
@@ -994,12 +1081,9 @@ public class HideSeekOverlay : MonoBehaviour
         if (selectedRole == role)
             return;
 
-        selectedRole = role;
-        if (selectedRole == PlayerRole.Hider && activeTab == UiTab.Questions)
-            activeTab = UiTab.Game;
-
-        previousCanAffordNearest = false;
-        previousCanAffordRadius = false;
+        ApplySyncedRole(role);
+        if (roomClient != null && roomClient.IsConnected)
+            roomClient.BeginChangeRole(role == PlayerRole.Hider ? "hider" : "seeker");
     }
 
     private bool DrawRoleButton(Rect rect, string label, PlayerRole role)
@@ -1537,6 +1621,134 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.backgroundColor = oldBackground;
     }
 
+
+    private void DrawRoomPanel(Rect panel)
+    {
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "MULTIPLAYER", panelHeadingStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Native Hide + Seek room synchronization", panelSubtitleStyle);
+
+        float cardX = panel.x + 12f;
+        float cardWidth = panel.width - 24f;
+        float y = panel.y + 57f;
+
+        if (roomClient == null)
+        {
+            Rect unavailable = new Rect(cardX, y, cardWidth, 110f);
+            DrawPanelRect(unavailable, CardBackground, BorderColor);
+            GUI.Label(new Rect(unavailable.x + 12f, unavailable.y + 9f, unavailable.width - 24f, 20f), "ROOM SERVICE", cardHeadingStyle);
+            GUI.Label(new Rect(unavailable.x + 12f, unavailable.y + 38f, unavailable.width - 24f, 54f), "Room service is still initializing.", emptyStateStyle);
+            return;
+        }
+
+        if (!roomClient.IsConnected)
+        {
+            Rect connect = new Rect(cardX, y, cardWidth, 268f);
+            DrawPanelRect(connect, CardBackground, BorderColor);
+            GUI.Label(new Rect(connect.x + 12f, connect.y + 8f, connect.width - 24f, 20f), "CREATE OR JOIN", cardHeadingStyle);
+            GUI.Label(new Rect(connect.x + 12f, connect.y + 30f, connect.width - 24f, 32f),
+                "Everyone uses the same six-character H+S room code. The room host controls the shared timer.", emptyStateStyle);
+
+            GUI.Label(new Rect(connect.x + 12f, connect.y + 70f, 90f, 19f), "DISPLAY NAME", metricLabelStyle);
+            GUI.SetNextControlName("BWHS_ROOM_NAME");
+            roomDisplayName = GUI.TextField(new Rect(connect.x + 118f, connect.y + 67f, connect.width - 130f, 25f), roomDisplayName ?? string.Empty, 28);
+
+            GUI.Label(new Rect(connect.x + 12f, connect.y + 103f, 90f, 19f), "YOUR ROLE", metricLabelStyle);
+            if (DrawRoleButton(new Rect(connect.x + 118f, connect.y + 99f, 94f, 29f), "SEEKER", PlayerRole.Seeker))
+                SetRole(PlayerRole.Seeker);
+            if (DrawRoleButton(new Rect(connect.x + 218f, connect.y + 99f, 94f, 29f), "HIDER", PlayerRole.Hider))
+                SetRole(PlayerRole.Hider);
+
+            bool oldEnabled = GUI.enabled;
+            GUI.enabled = oldEnabled && !roomClient.IsBusy;
+            Color oldBackground = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.20f, 0.43f, 0.29f, 1f);
+            if (GUI.Button(new Rect(connect.x + 12f, connect.y + 140f, connect.width - 24f, 34f), "CREATE ROOM", compactButtonStyle))
+            {
+                roomDisplayName = FirebaseRoomClient.SanitizeName(roomDisplayName);
+                settings.MultiplayerName = roomDisplayName;
+                SaveSettings();
+                roomClient.BeginCreate(roomDisplayName, selectedRole == PlayerRole.Hider ? "hider" : "seeker");
+            }
+
+            GUI.Label(new Rect(connect.x + 12f, connect.y + 187f, 90f, 19f), "ROOM CODE", metricLabelStyle);
+            GUI.SetNextControlName("BWHS_ROOM_CODE");
+            roomJoinCode = FirebaseRoomClient.NormalizeCode(GUI.TextField(new Rect(connect.x + 118f, connect.y + 184f, 92f, 25f), roomJoinCode ?? string.Empty, 6));
+            GUI.backgroundColor = new Color(0.18f, 0.24f, 0.34f, 1f);
+            GUI.enabled = oldEnabled && !roomClient.IsBusy && roomJoinCode.Length == 6;
+            if (GUI.Button(new Rect(connect.x + 218f, connect.y + 182f, connect.width - 230f, 29f), "JOIN", compactButtonStyle))
+            {
+                roomDisplayName = FirebaseRoomClient.SanitizeName(roomDisplayName);
+                settings.MultiplayerName = roomDisplayName;
+                SaveSettings();
+                roomClient.BeginJoin(roomJoinCode, roomDisplayName, selectedRole == PlayerRole.Hider ? "hider" : "seeker");
+            }
+            GUI.enabled = oldEnabled;
+            GUI.backgroundColor = oldBackground;
+
+            GUI.Label(new Rect(connect.x + 12f, connect.y + 224f, connect.width - 24f, 34f), roomClient.Status, emptyStateStyle);
+
+            string focused = GUI.GetNameOfFocusedControl();
+            roomTextEditing = focused == "BWHS_ROOM_NAME" || focused == "BWHS_ROOM_CODE";
+            return;
+        }
+
+        FirebaseRoomClient.RoomSnapshot snapshot = roomClient.Snapshot;
+        int memberCount = snapshot?.Members?.Count ?? 0;
+
+        Rect roomCard = new Rect(cardX, y, cardWidth, 132f);
+        DrawPanelRect(roomCard, new Color(0.09f, 0.13f, 0.16f, 0.98f), roomClient.IsHost ? AccentGreen : AccentCyan);
+        GUI.Label(new Rect(roomCard.x + 12f, roomCard.y + 8f, roomCard.width - 24f, 20f), "CONNECTED ROOM", cardHeadingStyle);
+        GUI.Label(new Rect(roomCard.x + 12f, roomCard.y + 31f, roomCard.width - 24f, 34f), roomClient.RoomCode, objectiveTitleStyle);
+        DrawMetricRow(roomCard, roomCard.y + 72f, "Authority", roomClient.IsHost ? "HOST" : "CLIENT");
+        DrawMetricRow(roomCard, roomCard.y + 94f, "Players", memberCount.ToString());
+        y += roomCard.height + 8f;
+
+        Rect roleCard = new Rect(cardX, y, cardWidth, 104f);
+        DrawPanelRect(roleCard, CardBackground, BorderColor);
+        GUI.Label(new Rect(roleCard.x + 12f, roleCard.y + 7f, roleCard.width - 24f, 20f), "YOUR ROLE", cardHeadingStyle);
+        GUI.Label(new Rect(roleCard.x + 12f, roleCard.y + 29f, roleCard.width - 24f, 18f), "Role changes sync to everyone in the H+S room", panelSubtitleStyle);
+        bool roleEnabled = GUI.enabled;
+        GUI.enabled = roleEnabled && !roomClient.IsBusy;
+        if (DrawRoleButton(new Rect(roleCard.x + 12f, roleCard.y + 55f, (roleCard.width - 30f) * 0.5f, 37f), "SEEKER", PlayerRole.Seeker))
+            SetRole(PlayerRole.Seeker);
+        if (DrawRoleButton(new Rect(roleCard.x + 18f + (roleCard.width - 30f) * 0.5f, roleCard.y + 55f, (roleCard.width - 30f) * 0.5f, 37f), "HIDER", PlayerRole.Hider))
+            SetRole(PlayerRole.Hider);
+        GUI.enabled = roleEnabled;
+        y += roleCard.height + 8f;
+
+        Rect members = new Rect(cardX, y, cardWidth, 250f);
+        DrawPanelRect(members, CardBackground, BorderColor);
+        GUI.Label(new Rect(members.x + 12f, members.y + 7f, members.width - 24f, 20f), "PLAYERS", cardHeadingStyle);
+
+        if (snapshot == null || snapshot.Members.Count == 0)
+        {
+            GUI.Label(new Rect(members.x + 12f, members.y + 37f, members.width - 24f, 42f), "Waiting for room member data…", emptyStateStyle);
+        }
+        else
+        {
+            int visible = Mathf.Min(8, snapshot.Members.Count);
+            for (int i = 0; i < visible; i++)
+            {
+                FirebaseRoomClient.RoomMemberSnapshot member = snapshot.Members[i];
+                bool memberHost = string.Equals(member.Uid, snapshot.HostUid, StringComparison.Ordinal);
+                string role = string.Equals(member.Role, "hider", StringComparison.Ordinal) ? "HIDER" : "SEEKER";
+                string suffix = memberHost ? " · HOST" : string.Empty;
+                GUI.Label(new Rect(members.x + 12f, members.y + 32f + i * 22f, members.width * 0.57f, 20f), member.Name, metricLabelStyle);
+                GUI.Label(new Rect(members.x + members.width * 0.54f, members.y + 32f + i * 22f, members.width * 0.42f - 12f, 20f), role + suffix, metricValueStyle);
+            }
+        }
+
+        GUI.Label(new Rect(members.x + 12f, members.y + 207f, members.width - 118f, 34f), roomClient.Status, emptyStateStyle);
+        Color leaveBg = GUI.backgroundColor;
+        bool leaveEnabled = GUI.enabled;
+        GUI.enabled = leaveEnabled && !roomClient.IsBusy;
+        GUI.backgroundColor = new Color(0.28f, 0.13f, 0.15f, 1f);
+        if (GUI.Button(new Rect(members.xMax - 102f, members.y + 210f, 90f, 28f), roomClient.IsHost ? "CLOSE ROOM" : "LEAVE", compactButtonStyle))
+            roomClient.BeginLeave();
+        GUI.enabled = leaveEnabled;
+        GUI.backgroundColor = leaveBg;
+    }
+
     private void DrawMorePanel(Rect panel)
     {
         GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "MORE", panelHeadingStyle);
@@ -1694,6 +1906,8 @@ public class HideSeekOverlay : MonoBehaviour
 
         initialized = true;
         LoadSettings();
+        roomDisplayName = FirebaseRoomClient.SanitizeName(settings.MultiplayerName);
+        roomClient = new FirebaseRoomClient();
     }
 
     private void LoadSettings()
@@ -2873,6 +3087,12 @@ public class HideSeekOverlay : MonoBehaviour
             UnityEngine.Object.Destroy(normalToneClip);
         if (importantToneClip != null)
             UnityEngine.Object.Destroy(importantToneClip);
+
+        if (roomClient != null)
+        {
+            roomClient.Dispose();
+            roomClient = null;
+        }
     }
 
     private enum MapTool
@@ -2886,6 +3106,7 @@ public class HideSeekOverlay : MonoBehaviour
     {
         Game,
         Questions,
+        Room,
         Map,
         More
     }
@@ -2960,6 +3181,7 @@ public class HideSeekOverlay : MonoBehaviour
         public bool SoundsEnabled { get; set; } = true;
         public bool NotificationSoundsEnabled { get; set; } = true;
         public float SoundVolume { get; set; } = 0.7f;
+        public string MultiplayerName { get; set; } = "Player";
 
         public void Clamp()
         {
@@ -2973,6 +3195,7 @@ public class HideSeekOverlay : MonoBehaviour
             TowerRadius250Cost = Mathf.Clamp(TowerRadius250Cost, 0, 30);
             MissionTargetDistance = Mathf.Clamp(MissionTargetDistance, 25f, 1000f);
             SoundVolume = Mathf.Clamp01(SoundVolume);
+            MultiplayerName = FirebaseRoomClient.SanitizeName(MultiplayerName);
         }
     }
 
