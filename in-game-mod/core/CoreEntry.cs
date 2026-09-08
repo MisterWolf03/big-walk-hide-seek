@@ -15,7 +15,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.17 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.18 configured.");
     }
 }
 
@@ -459,7 +459,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.17", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.18", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
@@ -1193,7 +1193,7 @@ public class HideSeekOverlay : MonoBehaviour
         Rect build = new Rect(cardX, y, cardWidth, 128f);
         DrawPanelRect(build, CardBackground, BorderColor);
         GUI.Label(new Rect(build.x + 12f, build.y + 7f, build.width - 24f, 20f), "NATIVE MOD", cardHeadingStyle);
-        DrawMetricRow(build, build.y + 33f, "Core", "0.0.17");
+        DrawMetricRow(build, build.y + 33f, "Core", "0.0.18");
         DrawMetricRow(build, build.y + 55f, "Position source", "Unity PlayerCharacter");
         DrawMetricRow(build, build.y + 77f, "Browser bridge", "Not required");
         GUI.Label(new Rect(build.x + 12f, build.y + 101f, build.width - 24f, 20f), "The old live-tracker plugin is only for the website.", emptyStateStyle);
@@ -1410,7 +1410,12 @@ public class HideSeekOverlay : MonoBehaviour
                 if (AllowedAt(game.x, game.y))
                     continue;
 
-                int i = (y * width + x) * 4;
+                // sourceY above uses the map/UI's top-origin pixel coordinates,
+                // but Unity raw Texture2D data starts at the bottom row. The main
+                // embedded map asset is packed the same way, so flip only the raw
+                // destination row here. Do NOT alter the game/map coordinate math.
+                int destinationY = height - 1 - y;
+                int i = (destinationY * width + x) * 4;
                 // BGRA32 equivalent of rgba(5,7,10,.72).
                 pixels[i + 0] = 10;
                 pixels[i + 1] = 7;
