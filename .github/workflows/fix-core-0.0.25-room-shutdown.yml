@@ -1,0 +1,46 @@
+name: Fix Core 0.0.25 Room Shutdown
+
+on:
+  push:
+    branches:
+      - mod-prototype
+    paths:
+      - ".github/workflows/fix-core-0.0.25-room-shutdown.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: mod-prototype
+
+      - name: Harden async room shutdown
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("in-game-mod/core/FirebaseRoomClient.cs")
+          text = path.read_text(encoding="utf-8")
+          old = '''    public void Dispose()\n    {\n        disposed = true;\n        authGate.Dispose();\n        matchWriteGate.Dispose();\n    }\n'''
+          new = '''    public void Dispose()\n    {\n        // Requests are intentionally allowed to finish against managed synchronization\n        // primitives during game shutdown. Disposing the semaphores here can race an\n        // in-flight async finally block that still needs to Release() one of them.\n        disposed = true;\n    }\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected one Dispose block, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add in-game-mod/core/FirebaseRoomClient.cs
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Harden Core 0.0.25 room client shutdown"
+            git push
+          fi
