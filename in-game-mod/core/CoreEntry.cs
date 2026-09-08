@@ -16,7 +16,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.22 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.23 configured.");
     }
 }
 
@@ -386,7 +386,7 @@ public class HideSeekOverlay : MonoBehaviour
             }
 
             if (stream == null)
-                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.22.");
+                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.23.");
 
             using (stream)
             using (var memory = new MemoryStream())
@@ -623,13 +623,19 @@ public class HideSeekOverlay : MonoBehaviour
         float sourceX = Mathf.Clamp(centerPixel.x - sourceWidth * 0.5f, 0f, Mathf.Max(0f, mapTexture.width - sourceWidth));
         float sourceY = Mathf.Clamp(centerPixel.y - sourceHeight * 0.5f, 0f, Mathf.Max(0f, mapTexture.height - sourceHeight));
 
-        Rect uv = new Rect(
-            sourceX / mapTexture.width,
-            1f - ((sourceY + sourceHeight) / mapTexture.height),
-            sourceWidth / mapTexture.width,
-            sourceHeight / mapTexture.height);
+        float cropScaleX = map.width / sourceWidth;
+        float cropScaleY = map.height / sourceHeight;
+        Rect fullMapRect = new Rect(
+            -sourceX * cropScaleX,
+            -sourceY * cropScaleY,
+            mapTexture.width * cropScaleX,
+            mapTexture.height * cropScaleY);
 
-        GUI.DrawTextureWithTexCoords(map, mapTexture, uv, false);
+        // DrawTextureWithTexCoords causes a native IL2CPP AccessViolation on
+        // Big Walk's Unity 6000 build. Clip the proven DrawTexture path instead.
+        GUI.BeginGroup(map);
+        GUI.DrawTexture(fullMapRect, mapTexture, ScaleMode.StretchToFill, false);
+        GUI.EndGroup();
 
         foreach (MapFeature tower in Towers)
         {
@@ -710,7 +716,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.22", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.23", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
