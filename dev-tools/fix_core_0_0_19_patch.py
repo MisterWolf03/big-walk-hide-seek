@@ -12,7 +12,7 @@ end = s.find(end_marker, start)
 if end < 0:
     raise SystemExit('types marker after audio-destroy block not found')
 
-replacement = r'''once(
+replacement = """once(
 '''    public void OnDestroy()
     {
         if (overlayOpen)
@@ -56,7 +56,7 @@ replacement = r'''once(
             UnityEngine.Object.Destroy(importantToneClip);
     }
 ''',
-'audio destroy')'''
+'audio destroy')"""
 
 s = s[:start] + replacement + s[end:]
 path.write_text(s, encoding='utf-8')
