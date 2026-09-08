@@ -1,0 +1,145 @@
+from pathlib import Path
+
+path = Path(__file__).resolve().parents[1] / "in-game-mod" / "core" / "CoreEntry.cs"
+text = path.read_text(encoding="utf-8")
+
+
+def replace_once(old: str, new: str, label: str) -> None:
+    global text
+    count = text.count(old)
+    if count != 1:
+        raise RuntimeError(f"{label}: expected one match, found {count}")
+    text = text.replace(old, new, 1)
+
+
+replace_once(
+    '''    private string roomDisplayName = "Player";\n    private string roomJoinCode = string.Empty;\n    private bool roomTextEditing;\n''',
+    '''    private string roomDisplayName = "Player";\n    private string roomJoinCode = string.Empty;\n    private bool roomTextEditing;\n    private RoomTextTarget activeRoomTextTarget;\n    private bool roomReplaceOnType;\n''',
+    "room text fields")
+
+replace_once(
+    '''        EnsureInitialized();\n        UpdateMultiplayer();\n        UpdateMatchTimer();\n''',
+    '''        EnsureInitialized();\n        UpdateMultiplayer();\n        UpdateRoomTextInput();\n        UpdateMatchTimer();\n''',
+    "Update text input hook")
+
+replace_once(
+    '''        EnsureInitialized();\n        EnsureStyles();\n        roomTextEditing = false;\n        GUI.depth = -10000;\n''',
+    '''        EnsureInitialized();\n        EnsureStyles();\n        roomTextEditing = activeRoomTextTarget != RoomTextTarget.None;\n        GUI.depth = -10000;\n''',
+    "OnGUI text editing state")
+
+replace_once(
+    '''            GUI.Label(new Rect(connect.x + 12f, connect.y + 70f, 90f, 19f), "DISPLAY NAME", metricLabelStyle);\n            GUI.SetNextControlName("BWHS_ROOM_NAME");\n            roomDisplayName = GUI.TextField(new Rect(connect.x + 118f, connect.y + 67f, connect.width - 130f, 25f), roomDisplayName ?? string.Empty, 28);\n''',
+    '''            GUI.Label(new Rect(connect.x + 12f, connect.y + 70f, 90f, 19f), "DISPLAY NAME", metricLabelStyle);\n            DrawRoomTextBox(new Rect(connect.x + 118f, connect.y + 67f, connect.width - 130f, 25f),\n                roomDisplayName, RoomTextTarget.DisplayName, "Player");\n''',
+    "display name TextField")
+
+replace_once(
+    '''            GUI.Label(new Rect(connect.x + 12f, connect.y + 187f, 90f, 19f), "ROOM CODE", metricLabelStyle);\n            GUI.SetNextControlName("BWHS_ROOM_CODE");\n            roomJoinCode = FirebaseRoomClient.NormalizeCode(GUI.TextField(new Rect(connect.x + 118f, connect.y + 184f, 92f, 25f), roomJoinCode ?? string.Empty, 6));\n''',
+    '''            GUI.Label(new Rect(connect.x + 12f, connect.y + 187f, 90f, 19f), "ROOM CODE", metricLabelStyle);\n            DrawRoomTextBox(new Rect(connect.x + 118f, connect.y + 184f, 92f, 25f),\n                roomJoinCode, RoomTextTarget.RoomCode, "ABC123");\n''',
+    "room code TextField")
+
+replace_once(
+    '''            GUI.Label(new Rect(connect.x + 12f, connect.y + 224f, connect.width - 24f, 34f), roomClient.Status, emptyStateStyle);\n\n            string focused = GUI.GetNameOfFocusedControl();\n            roomTextEditing = focused == "BWHS_ROOM_NAME" || focused == "BWHS_ROOM_CODE";\n            return;\n''',
+    '''            GUI.Label(new Rect(connect.x + 12f, connect.y + 224f, connect.width - 24f, 34f), roomClient.Status, emptyStateStyle);\n            return;\n''',
+    "focused control lookup")
+
+helper = r'''    private void UpdateRoomTextInput()
+    {
+        roomTextEditing = activeRoomTextTarget != RoomTextTarget.None;
+        if (!overlayOpen || !roomTextEditing)
+            return;
+
+        string typed = Input.inputString;
+        if (string.IsNullOrEmpty(typed))
+            return;
+
+        foreach (char raw in typed)
+        {
+            if (raw == '\n' || raw == '\r')
+            {
+                activeRoomTextTarget = RoomTextTarget.None;
+                roomTextEditing = false;
+                roomReplaceOnType = false;
+                continue;
+            }
+
+            if (raw == '\b')
+            {
+                if (activeRoomTextTarget == RoomTextTarget.DisplayName)
+                {
+                    if (roomReplaceOnType)
+                        roomDisplayName = string.Empty;
+                    else if (!string.IsNullOrEmpty(roomDisplayName))
+                        roomDisplayName = roomDisplayName.Substring(0, roomDisplayName.Length - 1);
+                }
+                else if (activeRoomTextTarget == RoomTextTarget.RoomCode)
+                {
+                    if (roomReplaceOnType)
+                        roomJoinCode = string.Empty;
+                    else if (!string.IsNullOrEmpty(roomJoinCode))
+                        roomJoinCode = roomJoinCode.Substring(0, roomJoinCode.Length - 1);
+                }
+                roomReplaceOnType = false;
+                continue;
+            }
+
+            if (raw < 32 || raw == 127)
+                continue;
+
+            if (activeRoomTextTarget == RoomTextTarget.DisplayName)
+            {
+                if (roomReplaceOnType)
+                    roomDisplayName = string.Empty;
+                roomReplaceOnType = false;
+                if ((roomDisplayName?.Length ?? 0) < 28)
+                    roomDisplayName = (roomDisplayName ?? string.Empty) + raw;
+            }
+            else if (activeRoomTextTarget == RoomTextTarget.RoomCode)
+            {
+                if (!char.IsLetterOrDigit(raw))
+                    continue;
+                if (roomReplaceOnType)
+                    roomJoinCode = string.Empty;
+                roomReplaceOnType = false;
+                if ((roomJoinCode?.Length ?? 0) < 6)
+                    roomJoinCode = FirebaseRoomClient.NormalizeCode((roomJoinCode ?? string.Empty) + raw);
+            }
+        }
+    }
+
+    private void DrawRoomTextBox(Rect rect, string value, RoomTextTarget target, string placeholder)
+    {
+        bool active = activeRoomTextTarget == target;
+        DrawPanelRect(rect,
+            active ? new Color(0.10f, 0.12f, 0.15f, 1f) : new Color(0.07f, 0.085f, 0.105f, 1f),
+            active ? AccentYellow : BorderColor);
+
+        string display = string.IsNullOrEmpty(value) ? placeholder : value;
+        Color old = GUI.color;
+        GUI.color = string.IsNullOrEmpty(value) ? MutedText : Color.white;
+        GUI.Label(new Rect(rect.x + 7f, rect.y + 2f, rect.width - 14f, rect.height - 4f), display, hintStyle);
+        GUI.color = old;
+
+        Event evt = Event.current;
+        if (evt != null && evt.type == EventType.MouseDown && evt.button == 0 && rect.Contains(evt.mousePosition))
+        {
+            activeRoomTextTarget = target;
+            roomTextEditing = true;
+            roomReplaceOnType = true;
+            evt.Use();
+        }
+    }
+
+'''
+
+marker = '''    private void DrawMorePanel(Rect panel)\n'''
+if text.count(marker) != 1:
+    raise RuntimeError("DrawMorePanel insertion marker missing or duplicated")
+text = text.replace(marker, helper + marker, 1)
+
+replace_once(
+    '''    private enum PlayerRole\n    {\n        Seeker,\n        Hider\n    }\n''',
+    '''    private enum PlayerRole\n    {\n        Seeker,\n        Hider\n    }\n\n    private enum RoomTextTarget\n    {\n        None,\n        DisplayName,\n        RoomCode\n    }\n''',
+    "RoomTextTarget enum")
+
+path.write_text(text, encoding="utf-8")
+print("Fixed Core 0.0.25 room text input without GUI.TextField.")
