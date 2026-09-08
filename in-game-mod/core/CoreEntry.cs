@@ -16,7 +16,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.23 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.24 configured.");
     }
 }
 
@@ -27,8 +27,8 @@ public class HideSeekOverlay : MonoBehaviour
     private const float TopBarHeight = 58f;
     private const float UiMargin = 14f;
     private const float SidePanelWidth = 390f;
-    private const float MiniMapWidth = 210f;
-    private const float MiniMapHeight = 164f;
+    private const float MiniMapWidth = 260f;
+    private const float MiniMapHeight = 260f;
     private const float NavHudWidth = 176f;
     private const float PassiveHudMargin = 14f;
 
@@ -204,6 +204,13 @@ public class HideSeekOverlay : MonoBehaviour
             && Time.unscaledTime - playerFoundAt >= 3f
             && (overlayOpen || settings.MiniMapEnabled))
             EnsureMapTexture();
+
+        if (hasPlayerPosition
+            && playerFoundAt >= 0f
+            && Time.unscaledTime - playerFoundAt >= 3f
+            && settings.SoundsEnabled
+            && uiAudioSource == null)
+            TryInitializeAudio();
 
         UpdateMissionProgress();
         UpdateGameplayNotifications();
@@ -386,7 +393,7 @@ public class HideSeekOverlay : MonoBehaviour
             }
 
             if (stream == null)
-                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.23.");
+                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.24.");
 
             using (stream)
             using (var memory = new MemoryStream())
@@ -616,7 +623,7 @@ public class HideSeekOverlay : MonoBehaviour
 
         Vector2 centerPixel = GameToMapPixel(gameX, gameY);
         float sourceWidth = 620f;
-        float sourceHeight = sourceWidth * (map.height / map.width);
+        float sourceHeight = sourceWidth;
         sourceWidth = Mathf.Min(sourceWidth, mapTexture.width);
         sourceHeight = Mathf.Min(sourceHeight, mapTexture.height);
 
@@ -631,10 +638,14 @@ public class HideSeekOverlay : MonoBehaviour
             mapTexture.width * cropScaleX,
             mapTexture.height * cropScaleY);
 
-        // DrawTextureWithTexCoords causes a native IL2CPP AccessViolation on
-        // Big Walk's Unity 6000 build. Clip the proven DrawTexture path instead.
+        if (constraints.Count > 0)
+            EnsureConstraintMaskTexture();
+
+        // Keep the safe 0.0.23 rendering path: crop by clipping a normal DrawTexture.
         GUI.BeginGroup(map);
         GUI.DrawTexture(fullMapRect, mapTexture, ScaleMode.StretchToFill, false);
+        if (constraintMaskTexture != null && constraints.Count > 0)
+            GUI.DrawTexture(fullMapRect, constraintMaskTexture, ScaleMode.StretchToFill, true);
         GUI.EndGroup();
 
         foreach (MapFeature tower in Towers)
@@ -646,11 +657,27 @@ public class HideSeekOverlay : MonoBehaviour
 
             float tx = map.x + ((towerPixel.x - sourceX) / sourceWidth) * map.width;
             float ty = map.y + ((towerPixel.y - sourceY) / sourceHeight) * map.height;
+            DrawSolidRect(new Rect(tx - 4f, ty - 4f, 8f, 8f), new Color(0.03f, 0.035f, 0.045f, 0.96f));
             DrawSolidRect(new Rect(tx - 3f, ty - 3f, 6f, 6f), tower.Color);
+        }
+
+        foreach (UserMarker marker in userMarkers)
+        {
+            Vector2 markerPixel = GameToMapPixel(marker.X, marker.Y);
+            if (markerPixel.x < sourceX || markerPixel.x > sourceX + sourceWidth
+                || markerPixel.y < sourceY || markerPixel.y > sourceY + sourceHeight)
+                continue;
+
+            float mx = map.x + ((markerPixel.x - sourceX) / sourceWidth) * map.width;
+            float my = map.y + ((markerPixel.y - sourceY) / sourceHeight) * map.height;
+            DrawSolidRect(new Rect(mx - 5f, my - 5f, 10f, 10f), new Color(0.03f, 0.035f, 0.045f, 0.98f));
+            DrawSolidRect(new Rect(mx - 3f, my - 3f, 6f, 6f), AccentYellow);
+            GUI.Label(new Rect(mx + 6f, my - 9f, 42f, 18f), $"M{marker.Id}", userMarkerLabelStyle);
         }
 
         float px = map.x + ((centerPixel.x - sourceX) / sourceWidth) * map.width;
         float py = map.y + ((centerPixel.y - sourceY) / sourceHeight) * map.height;
+        DrawSolidRect(new Rect(px - 6f, py - 6f, 12f, 12f), new Color(0.03f, 0.035f, 0.045f, 0.98f));
         DrawSolidRect(new Rect(px - 5f, py - 5f, 10f, 10f), Color.white);
         DrawSolidRect(new Rect(px - 3f, py - 3f, 6f, 6f), AccentCyan);
 
@@ -716,7 +743,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.23", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.24", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
@@ -1667,7 +1694,6 @@ public class HideSeekOverlay : MonoBehaviour
 
         initialized = true;
         LoadSettings();
-        TryInitializeAudio();
     }
 
     private void LoadSettings()
@@ -1720,10 +1746,15 @@ public class HideSeekOverlay : MonoBehaviour
             uiAudioSource.playOnAwake = false;
             uiAudioSource.loop = false;
             uiAudioSource.spatialBlend = 0f;
+            uiAudioSource.volume = 1f;
+            uiAudioSource.mute = false;
+            uiAudioSource.priority = 0;
+            uiAudioSource.ignoreListenerPause = true;
 
-            softToneClip = CreateToneClip("BWHS Soft", 620f, 0.08f);
-            normalToneClip = CreateToneClip("BWHS Normal", 760f, 0.14f);
-            importantToneClip = CreateToneClip("BWHS Important", 880f, 0.22f);
+            softToneClip = CreateToneClip("BWHS Soft", 620f, 0.10f);
+            normalToneClip = CreateToneClip("BWHS Normal", 760f, 0.16f);
+            importantToneClip = CreateToneClip("BWHS Important", 880f, 0.24f);
+            CoreEntry.Logger?.LogInfo("Hide + Seek notification audio initialized after world spawn.");
         }
         catch (Exception ex)
         {
@@ -1737,6 +1768,7 @@ public class HideSeekOverlay : MonoBehaviour
         const int sampleRate = 44100;
         int sampleCount = Mathf.Max(1, Mathf.RoundToInt(sampleRate * duration));
         AudioClip clip = AudioClip.Create(name, sampleCount, 1, sampleRate, false);
+        clip.hideFlags = HideFlags.HideAndDontSave;
         var data = new Il2CppStructArray<float>(sampleCount);
 
         for (int i = 0; i < sampleCount; i++)
@@ -1771,14 +1803,32 @@ public class HideSeekOverlay : MonoBehaviour
     private void PlayNotificationTone(NotificationTone tone)
     {
         if (uiAudioSource == null)
-            return;
+        {
+            if (hasPlayerPosition && playerFoundAt >= 0f && Time.unscaledTime - playerFoundAt >= 3f)
+                TryInitializeAudio();
+            if (uiAudioSource == null)
+                return;
+        }
 
         AudioClip clip = tone == NotificationTone.Important
             ? importantToneClip
             : tone == NotificationTone.Normal ? normalToneClip : softToneClip;
 
-        if (clip != null)
-            uiAudioSource.PlayOneShot(clip, settings.SoundVolume);
+        if (clip == null)
+            return;
+
+        try
+        {
+            uiAudioSource.Stop();
+            uiAudioSource.clip = clip;
+            uiAudioSource.volume = Mathf.Clamp01(settings.SoundVolume);
+            uiAudioSource.mute = false;
+            uiAudioSource.Play();
+        }
+        catch (Exception ex)
+        {
+            CoreEntry.Logger?.LogWarning($"Hide + Seek notification sound playback failed: {ex.Message}");
+        }
     }
 
     private void DrawNotifications()
