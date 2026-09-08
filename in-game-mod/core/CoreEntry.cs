@@ -15,7 +15,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.15 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.16 configured.");
     }
 }
 
@@ -26,6 +26,12 @@ public class HideSeekOverlay : MonoBehaviour
     private const float TopBarHeight = 58f;
     private const float UiMargin = 14f;
     private const float SidePanelWidth = 390f;
+    private const int PointsPerMinute = 1;
+    private const float QuestionCooldownSeconds = 300f;
+    private const float CenterlineUnlockSeconds = 600f;
+    private const float NearestTowerUnlockSeconds = 1200f;
+    private const float TowerRadiusUnlockSeconds = 1800f;
+    private const float MissionTargetDistance = 200f;
 
     private const double MapA = 1.01872096;
     private const double MapB = 0.00000814424539;
@@ -43,6 +49,8 @@ public class HideSeekOverlay : MonoBehaviour
     private static readonly Color AccentYellow = new Color(242f / 255f, 201f / 255f, 76f / 255f, 1f);
     private static readonly Color AccentGreen = new Color(117f / 255f, 224f / 255f, 163f / 255f, 1f);
     private static readonly Color AccentCyan = new Color(0.24f, 0.86f, 1f, 1f);
+    private static readonly Color AccentPurple = new Color(0.79f, 0.60f, 1f, 1f);
+    private static readonly Color AccentBlue = new Color(0.56f, 0.76f, 1f, 1f);
 
     private static readonly MapFeature[] Towers = new[]
     {
@@ -58,6 +66,9 @@ public class HideSeekOverlay : MonoBehaviour
         new MapFeature("Purple Tunnel", 1897f, 4286f, new Color(155f / 255f, 93f / 255f, 229f / 255f)),
         new MapFeature("Microphone", 1235f, 3408f, new Color(1f, 79f / 255f, 163f / 255f))
     };
+
+    private static readonly int[] TowerRadiusOptions = { 500, 400, 300, 250 };
+    private static readonly int[] TowerRadiusCosts = { 4, 5, 7, 9 };
 
     private bool overlayOpen;
     private bool previousCursorVisible;
@@ -89,20 +100,48 @@ public class HideSeekOverlay : MonoBehaviour
     private Vector2 rulerA;
     private Vector2 rulerB;
 
+    private UiTab activeTab = UiTab.Game;
+    private PlayerRole selectedRole = PlayerRole.Seeker;
+    private bool matchRunning;
+    private float matchElapsedSeconds;
+    private float matchLastTick;
+    private int seekerPointsSpent;
+    private float questionCooldownUntil;
+    private bool questionTestOverride;
+    private readonly List<string> questionHistory = new List<string>();
+
+    private bool centerlineVertical;
+    private int centerlineAnswerIndex;
+    private int nearestTowerAnswerIndex;
+    private int towerRadiusTowerIndex;
+    private int towerRadiusOptionIndex;
+    private bool towerRadiusInside = true;
+
+    private bool missionActive;
+    private bool missionCompleted;
+    private bool missionReady;
+    private Vector2 missionStart;
+    private float missionDistance;
+
     private GUIStyle brandStyle;
     private GUIStyle versionStyle;
     private GUIStyle statusStyle;
     private GUIStyle hintStyle;
     private GUIStyle dockLabelStyle;
     private GUIStyle compactButtonStyle;
+    private GUIStyle tabButtonStyle;
     private GUIStyle panelHeadingStyle;
     private GUIStyle panelSubtitleStyle;
     private GUIStyle cardHeadingStyle;
     private GUIStyle liveCardHeadingStyle;
     private GUIStyle markerCardHeadingStyle;
+    private GUIStyle missionCardHeadingStyle;
     private GUIStyle metricLabelStyle;
     private GUIStyle metricValueStyle;
     private GUIStyle emptyStateStyle;
+    private GUIStyle bigNumberStyle;
+    private GUIStyle objectiveTitleStyle;
+    private GUIStyle objectiveEyebrowStyle;
     private GUIStyle mapMessageStyle;
     private GUIStyle gridLabelStyle;
     private GUIStyle featureOutlineStyle;
@@ -123,6 +162,14 @@ public class HideSeekOverlay : MonoBehaviour
 
     public void Update()
     {
+        UpdateMatchTimer();
+
+        bool needsPosition = overlayOpen || missionActive;
+        if (needsPosition)
+            UpdatePlayerPosition();
+
+        UpdateMissionProgress();
+
         if (Input.GetKeyDown(KeyCode.F7))
         {
             SetOverlayOpen(!overlayOpen);
@@ -141,7 +188,53 @@ public class HideSeekOverlay : MonoBehaviour
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
         EnsureMapTexture();
-        UpdatePlayerPosition();
+    }
+
+    private void UpdateMatchTimer()
+    {
+        float now = Time.unscaledTime;
+        if (!matchRunning)
+        {
+            matchLastTick = now;
+            return;
+        }
+
+        if (matchLastTick <= 0f)
+            matchLastTick = now;
+
+        float delta = Mathf.Max(0f, now - matchLastTick);
+        matchElapsedSeconds += delta;
+        matchLastTick = now;
+    }
+
+    private void StartOrResumeMatch()
+    {
+        matchLastTick = Time.unscaledTime;
+        matchRunning = true;
+        CoreEntry.Logger?.LogInfo(matchElapsedSeconds <= 0.01f ? "Hide + Seek match started." : "Hide + Seek match resumed.");
+    }
+
+    private void PauseMatch()
+    {
+        UpdateMatchTimer();
+        matchRunning = false;
+        CoreEntry.Logger?.LogInfo("Hide + Seek match paused.");
+    }
+
+    private void ResetMatchState()
+    {
+        matchRunning = false;
+        matchElapsedSeconds = 0f;
+        matchLastTick = Time.unscaledTime;
+        seekerPointsSpent = 0;
+        questionCooldownUntil = 0f;
+        questionHistory.Clear();
+        missionActive = false;
+        missionCompleted = false;
+        missionReady = false;
+        missionDistance = 0f;
+        missionStart = Vector2.zero;
+        CoreEntry.Logger?.LogInfo("Hide + Seek gameplay state reset.");
     }
 
     private void SetOverlayOpen(bool open)
@@ -158,14 +251,16 @@ public class HideSeekOverlay : MonoBehaviour
             EnterOverlayInputMode();
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            CoreEntry.Logger?.LogInfo("Hide + Seek map opened; ControlsManager menu mode enabled.");
+            EnsureMapTexture();
+            UpdatePlayerPosition();
+            CoreEntry.Logger?.LogInfo("Hide + Seek overlay opened; ControlsManager menu mode enabled.");
         }
         else
         {
             ExitOverlayInputMode();
             Cursor.visible = previousCursorVisible;
             Cursor.lockState = previousCursorLock;
-            CoreEntry.Logger?.LogInfo("Hide + Seek map closed; ControlsManager menu mode released.");
+            CoreEntry.Logger?.LogInfo("Hide + Seek overlay closed; ControlsManager menu mode released.");
         }
     }
 
@@ -357,18 +452,80 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, 0f, Screen.width, TopBarHeight), TopBarBackground);
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
-        GUI.Label(new Rect(16f, 6f, 360f, 27f), "BIG WALK HIDE + SEEK", brandStyle);
-        GUI.Label(new Rect(18f, 31f, 320f, 18f), "CORE v0.0.15 · MAP", versionStyle);
+        GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.16", versionStyle);
 
-        string status = hasPlayerPosition
-            ? $"LIVE · Y {gameY:0}, X {gameX:0}"
-            : "SEARCHING FOR PLAYER…";
-        GUI.Label(new Rect(Mathf.Max(420f, Screen.width - 525f), 13f, 390f, 30f), status, statusStyle);
+        float tabX = 150f;
+        DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
+        DrawTopTab(ref tabX, "QUESTIONS", UiTab.Questions, 88f);
+        DrawTopTab(ref tabX, "MAP", UiTab.Map, 58f);
+        DrawTopTab(ref tabX, "MORE", UiTab.More, 60f);
+
+        float economyX = tabX + 12f;
+        string economy = selectedRole == PlayerRole.Seeker
+            ? $"{SeekerPointsBalance()} SP · +{PointsPerMinute}/min"
+            : missionActive ? $"MISSION · {missionDistance:0}/{MissionTargetDistance:0}" : "HIDER";
+        Color economyColor = selectedRole == PlayerRole.Seeker ? AccentYellow : AccentPurple;
+        DrawTopChip(new Rect(economyX, 15f, 150f, 28f), economy, economyColor);
+
+        float roleX = economyX + 158f;
+        DrawTopChip(new Rect(roleX, 15f, 86f, 28f), selectedRole == PlayerRole.Seeker ? "SEEKER" : "HIDER",
+            selectedRole == PlayerRole.Seeker ? AccentBlue : AccentPurple);
+
+        float closeX = Screen.width - 90f;
+        float timerRight = closeX - 10f;
+        DrawTopMatchControls(timerRight);
 
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
-        if (GUI.Button(new Rect(Screen.width - 104f, 11f, 88f, 36f), "CLOSE", compactButtonStyle))
+        if (GUI.Button(new Rect(closeX, 11f, 76f, 36f), "CLOSE", compactButtonStyle))
             SetOverlayOpen(false);
+        GUI.backgroundColor = oldBackground;
+    }
+
+    private void DrawTopTab(ref float x, string label, UiTab tab, float width)
+    {
+        Color oldBackground = GUI.backgroundColor;
+        bool active = activeTab == tab;
+        GUI.backgroundColor = active ? new Color(0.19f, 0.16f, 0.086f, 1f) : new Color(0.07f, 0.085f, 0.105f, 1f);
+        if (GUI.Button(new Rect(x, 12f, width, 34f), label, tabButtonStyle))
+            activeTab = tab;
+        if (active)
+            DrawSolidRect(new Rect(x + 7f, 46f, width - 14f, 2f), AccentYellow);
+        GUI.backgroundColor = oldBackground;
+        x += width + 6f;
+    }
+
+    private void DrawTopChip(Rect rect, string text, Color accent)
+    {
+        DrawPanelRect(rect, new Color(0.09f, 0.11f, 0.14f, 1f), new Color(accent.r * 0.55f, accent.g * 0.55f, accent.b * 0.55f, 1f));
+        Color old = GUI.color;
+        GUI.color = accent;
+        GUI.Label(rect, text, statusStyle);
+        GUI.color = old;
+    }
+
+    private void DrawTopMatchControls(float rightEdge)
+    {
+        string time = FormatTime(matchElapsedSeconds);
+        Rect timerRect = new Rect(rightEdge - 236f, 5f, 74f, 27f);
+        GUI.Label(timerRect, time, bigNumberStyle);
+        GUI.Label(new Rect(timerRect.x, 31f, 74f, 16f), matchRunning ? "RUNNING" : (matchElapsedSeconds > 0f ? "PAUSED" : "NOT STARTED"), versionStyle);
+
+        float x = rightEdge - 154f;
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
+        if (!matchRunning && GUI.Button(new Rect(x, 13f, 54f, 30f), matchElapsedSeconds > 0f ? "RESUME" : "START", compactButtonStyle))
+            StartOrResumeMatch();
+        if (matchRunning)
+        {
+            GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
+            if (GUI.Button(new Rect(x, 13f, 54f, 30f), "PAUSE", compactButtonStyle))
+                PauseMatch();
+        }
+        GUI.backgroundColor = new Color(0.28f, 0.13f, 0.15f, 1f);
+        if (GUI.Button(new Rect(x + 60f, 13f, 56f, 30f), "RESET", compactButtonStyle))
+            ResetMatchState();
         GUI.backgroundColor = oldBackground;
     }
 
@@ -387,7 +544,7 @@ public class HideSeekOverlay : MonoBehaviour
         Rect toolDock = new Rect(UiMargin, UiMargin, 226f, 50f);
         Rect displayDock = new Rect(toolDock.xMax + 8f, UiMargin, 282f, 50f);
         Rect actionDock = new Rect(UiMargin, 72f, 284f, 50f);
-        Rect sidePanel = new Rect(viewport.width - sideWidth - UiMargin, UiMargin, sideWidth, Mathf.Min(584f, viewport.height - UiMargin * 2f));
+        Rect sidePanel = new Rect(viewport.width - sideWidth - UiMargin, UiMargin, sideWidth, Mathf.Max(300f, viewport.height - UiMargin * 2f));
 
         if (displayDock.xMax > sidePanel.x - 8f)
             displayDock = new Rect(UiMargin, 130f, 282f, 50f);
@@ -428,71 +585,472 @@ public class HideSeekOverlay : MonoBehaviour
         DrawToolDock(toolDock);
         DrawDisplayDock(displayDock);
         DrawActionDock(actionDock, viewport.width, viewport.height);
-        DrawNavigationPanel(sidePanel);
+        DrawSidebar(sidePanel);
 
         if (canShowCoordinateTip)
             DrawCoordinateTip(localMouse, mapRect, viewport.width, viewport.height);
 
         DrawBottomHint(viewport.height);
-
         GUI.EndGroup();
     }
 
-    private void DrawToolDock(Rect dock)
+    private void DrawSidebar(Rect panel)
     {
-        DrawDockBackground(dock);
-        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 48f, 14f), "TOOLS", dockLabelStyle);
+        DrawPanelRect(panel, PanelBackground, BorderColor);
 
-        float y = dock.y + 15f;
-        if (DrawToolButton(new Rect(dock.x + 7f, y, 62f, 29f), "PAN", activeTool == MapTool.Pan))
-            activeTool = MapTool.Pan;
-        if (DrawToolButton(new Rect(dock.x + 76f, y, 72f, 29f), "MARKER", activeTool == MapTool.Marker))
-            activeTool = MapTool.Marker;
-        if (DrawToolButton(new Rect(dock.x + 155f, y, 64f, 29f), "RULER", activeTool == MapTool.Ruler))
-            activeTool = MapTool.Ruler;
+        switch (activeTab)
+        {
+            case UiTab.Game:
+                DrawGamePanel(panel);
+                break;
+            case UiTab.Questions:
+                DrawQuestionsPanel(panel);
+                break;
+            case UiTab.Map:
+                DrawNavigationPanel(panel);
+                break;
+            default:
+                DrawMorePanel(panel);
+                break;
+        }
     }
 
-    private void DrawDisplayDock(Rect dock)
+    private void DrawGamePanel(Rect panel)
     {
-        DrawDockBackground(dock);
-        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 70f, 14f), "DISPLAY", dockLabelStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "GAME", panelHeadingStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Role, match state, and current objective", panelSubtitleStyle);
 
-        float y = dock.y + 15f;
-        showGrid = DrawToggleButton(new Rect(dock.x + 7f, y, 58f, 29f), "GRID", showGrid);
-        showTowers = DrawToggleButton(new Rect(dock.x + 72f, y, 76f, 29f), "TOWERS", showTowers);
-        showLandmarks = DrawToggleButton(new Rect(dock.x + 155f, y, 120f, 29f), "LANDMARKS", showLandmarks);
+        float cardX = panel.x + 12f;
+        float cardWidth = panel.width - 24f;
+        float y = panel.y + 57f;
+
+        Rect objective = new Rect(cardX, y, cardWidth, 132f);
+        DrawCurrentObjectiveCard(objective);
+        y += objective.height + 10f;
+
+        Rect roleCard = new Rect(cardX, y, cardWidth, 104f);
+        DrawRoleCard(roleCard);
+        y += roleCard.height + 10f;
+
+        Rect matchCard = new Rect(cardX, y, cardWidth, 122f);
+        DrawMatchCard(matchCard);
+        y += matchCard.height + 10f;
+
+        Rect missionCard = new Rect(cardX, y, cardWidth, 174f);
+        DrawMissionCard(missionCard);
     }
 
-    private void DrawActionDock(Rect dock, float viewportWidth, float viewportHeight)
+    private void DrawCurrentObjectiveCard(Rect card)
     {
-        DrawDockBackground(dock);
-        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 80f, 14f), "VIEW", dockLabelStyle);
+        Color border = selectedRole == PlayerRole.Hider ? new Color(0.43f, 0.31f, 0.49f, 1f) : new Color(0.31f, 0.40f, 0.50f, 1f);
+        DrawPanelRect(card, new Color(0.10f, 0.13f, 0.17f, 0.98f), border);
+        GUI.Label(new Rect(card.x + 13f, card.y + 8f, card.width - 26f, 16f), "CURRENT STATUS", objectiveEyebrowStyle);
 
-        float y = dock.y + 15f;
+        string title;
+        string detail;
+        if (!matchRunning && matchElapsedSeconds <= 0.01f)
+        {
+            title = "Waiting to start";
+            detail = "Choose a role, then start the match from the top bar.";
+        }
+        else if (selectedRole == PlayerRole.Hider && missionActive)
+        {
+            title = missionReady ? "Mission target reached" : "Move 200 units";
+            detail = missionReady
+                ? "READY is now available in the mission card."
+                : $"Travel {Mathf.Max(0f, MissionTargetDistance - missionDistance):0} more units from your mission start.";
+        }
+        else if (selectedRole == PlayerRole.Hider)
+        {
+            title = "Stay hidden";
+            detail = "No movement objective is active. Trigger the test mission when you want one.";
+        }
+        else
+        {
+            title = "Search for the Hider";
+            detail = QuestionCooldownActive()
+                ? $"Questions cooling down · {FormatTime(QuestionCooldownRemaining())} remaining."
+                : NextQuestionStatus();
+        }
+
+        GUI.Label(new Rect(card.x + 13f, card.y + 30f, card.width - 26f, 34f), title, objectiveTitleStyle);
+        GUI.Label(new Rect(card.x + 13f, card.y + 72f, card.width - 26f, 50f), detail, emptyStateStyle);
+    }
+
+    private void DrawRoleCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "ROLE", cardHeadingStyle);
+        GUI.Label(new Rect(card.x + 12f, card.y + 29f, card.width - 24f, 18f), "Local role selection for this client", panelSubtitleStyle);
+
+        if (DrawRoleButton(new Rect(card.x + 12f, card.y + 55f, (card.width - 30f) * 0.5f, 37f), "SEEKER", PlayerRole.Seeker))
+            selectedRole = PlayerRole.Seeker;
+        if (DrawRoleButton(new Rect(card.x + 18f + (card.width - 30f) * 0.5f, card.y + 55f, (card.width - 30f) * 0.5f, 37f), "HIDER", PlayerRole.Hider))
+            selectedRole = PlayerRole.Hider;
+    }
+
+    private bool DrawRoleButton(Rect rect, string label, PlayerRole role)
+    {
         Color oldBackground = GUI.backgroundColor;
-        GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
-
-        if (GUI.Button(new Rect(dock.x + 7f, y, 46f, 29f), "FIT", compactButtonStyle))
-            FitMap();
-
-        GUI.enabled = hasPlayerPosition;
-        if (GUI.Button(new Rect(dock.x + 60f, y, 76f, 29f), "CENTER", compactButtonStyle))
-            CenterOnPlayer(viewportWidth, viewportHeight);
-        GUI.enabled = true;
-
-        if (GUI.Button(new Rect(dock.x + 143f, y, 31f, 29f), "−", compactButtonStyle))
-            ZoomAt(viewportWidth, viewportHeight, new Vector2(viewportWidth * 0.5f, viewportHeight * 0.5f), 1f / 1.25f);
-        if (GUI.Button(new Rect(dock.x + 181f, y, 31f, 29f), "+", compactButtonStyle))
-            ZoomAt(viewportWidth, viewportHeight, new Vector2(viewportWidth * 0.5f, viewportHeight * 0.5f), 1.25f);
-
+        bool active = selectedRole == role;
+        Color accent = role == PlayerRole.Seeker ? AccentBlue : AccentPurple;
+        GUI.backgroundColor = active ? new Color(accent.r * 0.38f, accent.g * 0.38f, accent.b * 0.38f, 1f) : new Color(0.12f, 0.14f, 0.17f, 1f);
+        bool clicked = GUI.Button(rect, label, compactButtonStyle);
+        if (active)
+            DrawSolidRect(new Rect(rect.x + 8f, rect.yMax - 2f, rect.width - 16f, 2f), accent);
         GUI.backgroundColor = oldBackground;
-        GUI.Label(new Rect(dock.x + 219f, y + 2f, 58f, 25f), $"{zoom:0.0}×", hintStyle);
+        return clicked;
+    }
+
+    private void DrawMatchCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "MATCH", cardHeadingStyle);
+        float y = card.y + 31f;
+        DrawMetricRow(card, y, "Elapsed", FormatTime(matchElapsedSeconds)); y += 22f;
+        DrawMetricRow(card, y, "State", matchRunning ? "Running" : (matchElapsedSeconds > 0f ? "Paused" : "Not started")); y += 22f;
+        DrawMetricRow(card, y, "Role", selectedRole == PlayerRole.Seeker ? "Seeker" : "Hider"); y += 22f;
+        DrawMetricRow(card, y, "Native tracking", hasPlayerPosition ? "Connected" : "Searching");
+    }
+
+    private void DrawMissionCard(Rect card)
+    {
+        Color bg = selectedRole == PlayerRole.Hider && missionActive
+            ? new Color(0.15f, 0.105f, 0.21f, 0.98f)
+            : CardBackground;
+        Color border = selectedRole == PlayerRole.Hider && missionActive
+            ? new Color(0.50f, 0.35f, 0.75f, 1f)
+            : BorderColor;
+        DrawPanelRect(card, bg, border);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "HIDER MISSION · MANUAL TEST", missionCardHeadingStyle);
+
+        if (selectedRole != PlayerRole.Hider)
+        {
+            GUI.Label(new Rect(card.x + 12f, card.y + 39f, card.width - 24f, 62f), "Switch to HIDER to test the first movement mission.", emptyStateStyle);
+            return;
+        }
+
+        if (!missionActive)
+        {
+            string message = missionCompleted
+                ? "Mission complete. Trigger it again whenever you want to retest."
+                : "Start at your current location, then move 200 map units away.";
+            GUI.Label(new Rect(card.x + 12f, card.y + 35f, card.width - 24f, 48f), message, emptyStateStyle);
+
+            GUI.enabled = hasPlayerPosition;
+            Color oldBackground = GUI.backgroundColor;
+            GUI.backgroundColor = new Color(0.30f, 0.20f, 0.43f, 1f);
+            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, card.width - 24f, 38f), "START 200-UNIT MISSION", compactButtonStyle))
+                StartMovementMission();
+            GUI.backgroundColor = oldBackground;
+            GUI.enabled = true;
+            return;
+        }
+
+        DrawMetricRow(card, card.y + 33f, "Progress", $"{missionDistance:0} / {MissionTargetDistance:0} units");
+        DrawMetricRow(card, card.y + 55f, "Remaining", $"{Mathf.Max(0f, MissionTargetDistance - missionDistance):0} units");
+        DrawMetricRow(card, card.y + 77f, "Status", missionReady ? "Target reached" : "Keep moving");
+
+        Color oldBg = GUI.backgroundColor;
+        if (missionReady)
+        {
+            GUI.backgroundColor = new Color(0.20f, 0.43f, 0.29f, 1f);
+            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, 154f, 38f), "READY", compactButtonStyle))
+                CompleteMovementMission();
+            GUI.backgroundColor = new Color(0.28f, 0.13f, 0.15f, 1f);
+            if (GUI.Button(new Rect(card.x + card.width - 116f, card.y + 122f, 104f, 38f), "CANCEL", compactButtonStyle))
+                CancelMovementMission();
+        }
+        else
+        {
+            GUI.backgroundColor = new Color(0.28f, 0.13f, 0.15f, 1f);
+            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, card.width - 24f, 38f), "CANCEL MISSION", compactButtonStyle))
+                CancelMovementMission();
+        }
+        GUI.backgroundColor = oldBg;
+    }
+
+    private void StartMovementMission()
+    {
+        if (!hasPlayerPosition)
+            return;
+
+        missionStart = new Vector2(gameX, gameY);
+        missionDistance = 0f;
+        missionReady = false;
+        missionCompleted = false;
+        missionActive = true;
+        CoreEntry.Logger?.LogInfo($"Movement mission started at Y {gameY:0}, X {gameX:0}. Target: {MissionTargetDistance:0} units.");
+    }
+
+    private void UpdateMissionProgress()
+    {
+        if (!missionActive || !hasPlayerPosition)
+            return;
+
+        missionDistance = Vector2.Distance(missionStart, new Vector2(gameX, gameY));
+        missionReady = missionDistance >= MissionTargetDistance;
+    }
+
+    private void CompleteMovementMission()
+    {
+        if (!missionActive || !missionReady)
+            return;
+
+        missionActive = false;
+        missionCompleted = true;
+        missionReady = false;
+        CoreEntry.Logger?.LogInfo($"Movement mission completed after travelling {missionDistance:0} units.");
+    }
+
+    private void CancelMovementMission()
+    {
+        missionActive = false;
+        missionReady = false;
+        missionDistance = 0f;
+        CoreEntry.Logger?.LogInfo("Movement mission cancelled.");
+    }
+
+    private void DrawQuestionsPanel(Rect panel)
+    {
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "QUESTIONS", panelHeadingStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Seeker economy + manual answer controls", panelSubtitleStyle);
+
+        float cardX = panel.x + 12f;
+        float cardWidth = panel.width - 24f;
+        float y = panel.y + 57f;
+
+        if (selectedRole != PlayerRole.Seeker)
+        {
+            Rect blocked = new Rect(cardX, y, cardWidth, 122f);
+            DrawPanelRect(blocked, CardBackground, BorderColor);
+            GUI.Label(new Rect(blocked.x + 12f, blocked.y + 7f, blocked.width - 24f, 20f), "SEEKER ONLY", cardHeadingStyle);
+            GUI.Label(new Rect(blocked.x + 12f, blocked.y + 38f, blocked.width - 24f, 62f), "The Questions tab belongs to the Seeker. Switch roles on the Game tab to use it.", emptyStateStyle);
+            return;
+        }
+
+        Rect pointsCard = new Rect(cardX, y, cardWidth, 92f);
+        DrawSeekerPointsCard(pointsCard);
+        y += pointsCard.height + 8f;
+
+        Rect centerline = new Rect(cardX, y, cardWidth, 142f);
+        DrawCenterlineQuestionCard(centerline);
+        y += centerline.height + 8f;
+
+        Rect nearest = new Rect(cardX, y, cardWidth, 118f);
+        DrawNearestTowerQuestionCard(nearest);
+        y += nearest.height + 8f;
+
+        Rect radius = new Rect(cardX, y, cardWidth, 150f);
+        DrawTowerRadiusQuestionCard(radius);
+        y += radius.height + 8f;
+
+        if (y + 84f < panel.yMax - 8f)
+        {
+            Rect history = new Rect(cardX, y, cardWidth, Mathf.Min(96f, panel.yMax - y - 12f));
+            DrawQuestionHistoryCard(history);
+        }
+    }
+
+    private void DrawSeekerPointsCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "SEEKER POINTS", cardHeadingStyle);
+        DrawMetricRow(card, card.y + 31f, "Available", questionTestOverride ? $"{SeekerPointsBalance()} · TEST BYPASS" : SeekerPointsBalance().ToString());
+        DrawMetricRow(card, card.y + 53f, "Earned / spent", $"{SeekerPointsEarned()} / {seekerPointsSpent}");
+        string cooldown = questionTestOverride ? "Test bypass" : (QuestionCooldownActive() ? FormatTime(QuestionCooldownRemaining()) : "READY");
+        DrawMetricRow(card, card.y + 75f, "Cooldown", cooldown);
+    }
+
+    private void DrawCenterlineQuestionCard(Rect card)
+    {
+        const int cost = 4;
+        DrawQuestionCardBase(card, "CENTERLINE", cost, CenterlineUnlockSeconds, out bool available);
+
+        string line = centerlineVertical ? "X 17" : "Y 37";
+        string answer = centerlineVertical
+            ? (centerlineAnswerIndex == 0 ? "WEST" : "EAST")
+            : (centerlineAnswerIndex == 0 ? "NORTH" : "SOUTH");
+
+        float y = card.y + 47f;
+        if (DrawCycleButton(new Rect(card.x + 12f, y, (card.width - 30f) * 0.5f, 29f), $"LINE · {line}"))
+            centerlineVertical = !centerlineVertical;
+        if (DrawCycleButton(new Rect(card.x + 18f + (card.width - 30f) * 0.5f, y, (card.width - 30f) * 0.5f, 29f), $"ANSWER · {answer}"))
+            centerlineAnswerIndex = 1 - centerlineAnswerIndex;
+
+        GUI.enabled = available;
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 101f, card.width - 24f, 31f), "APPLY ANSWER", compactButtonStyle))
+            ApplyQuestion(cost, $"Centerline {line} → {answer}");
+        GUI.backgroundColor = oldBackground;
+        GUI.enabled = true;
+    }
+
+    private void DrawNearestTowerQuestionCard(Rect card)
+    {
+        const int cost = 5;
+        DrawQuestionCardBase(card, "NEAREST TOWER", cost, NearestTowerUnlockSeconds, out bool available);
+
+        MapFeature tower = Towers[Mathf.Clamp(nearestTowerAnswerIndex, 0, Towers.Length - 1)];
+        if (DrawCycleButton(new Rect(card.x + 12f, card.y + 47f, card.width - 24f, 29f), $"ANSWER · {tower.Name}"))
+            nearestTowerAnswerIndex = (nearestTowerAnswerIndex + 1) % Towers.Length;
+
+        GUI.enabled = available;
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 80f, card.width - 24f, 29f), "APPLY ANSWER", compactButtonStyle))
+            ApplyQuestion(cost, $"Nearest tower → {tower.Name}");
+        GUI.backgroundColor = oldBackground;
+        GUI.enabled = true;
+    }
+
+    private void DrawTowerRadiusQuestionCard(Rect card)
+    {
+        int radius = TowerRadiusOptions[Mathf.Clamp(towerRadiusOptionIndex, 0, TowerRadiusOptions.Length - 1)];
+        int cost = TowerRadiusCosts[Mathf.Clamp(towerRadiusOptionIndex, 0, TowerRadiusCosts.Length - 1)];
+        DrawQuestionCardBase(card, "TOWER RADIUS", cost, TowerRadiusUnlockSeconds, out bool available);
+
+        MapFeature tower = Towers[Mathf.Clamp(towerRadiusTowerIndex, 0, Towers.Length - 1)];
+        float half = (card.width - 30f) * 0.5f;
+        if (DrawCycleButton(new Rect(card.x + 12f, card.y + 47f, half, 29f), $"TOWER · {tower.Name}"))
+            towerRadiusTowerIndex = (towerRadiusTowerIndex + 1) % Towers.Length;
+        if (DrawCycleButton(new Rect(card.x + 18f + half, card.y + 47f, half, 29f), $"RADIUS · {radius}"))
+            towerRadiusOptionIndex = (towerRadiusOptionIndex + 1) % TowerRadiusOptions.Length;
+        if (DrawCycleButton(new Rect(card.x + 12f, card.y + 80f, card.width - 24f, 29f), $"ANSWER · {(towerRadiusInside ? "INSIDE" : "OUTSIDE")}"))
+            towerRadiusInside = !towerRadiusInside;
+
+        GUI.enabled = available;
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 113f, card.width - 24f, 29f), "APPLY ANSWER", compactButtonStyle))
+            ApplyQuestion(cost, $"{tower.Name} tower · {radius}u → {(towerRadiusInside ? "Inside" : "Outside")}");
+        GUI.backgroundColor = oldBackground;
+        GUI.enabled = true;
+    }
+
+    private void DrawQuestionCardBase(Rect card, string name, int cost, float unlockSeconds, out bool available)
+    {
+        bool unlocked = QuestionUnlocked(unlockSeconds);
+        available = CanApplyQuestion(unlockSeconds, cost);
+        Color border = unlocked ? new Color(0.34f, 0.30f, 0.17f, 1f) : BorderColor;
+        DrawPanelRect(card, CardBackground, border);
+
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 150f, 20f), name, cardHeadingStyle);
+        GUI.Label(new Rect(card.x + card.width - 136f, card.y + 7f, 124f, 20f), $"COST · {cost} SP", metricValueStyle);
+
+        string state;
+        if (questionTestOverride)
+            state = "TEST OVERRIDE";
+        else if (!unlocked)
+            state = $"UNLOCKS {FormatTime(unlockSeconds)}";
+        else if (QuestionCooldownActive())
+            state = $"COOLDOWN {FormatTime(QuestionCooldownRemaining())}";
+        else if (SeekerPointsBalance() < cost)
+            state = $"NEED {cost - SeekerPointsBalance()} SP";
+        else
+            state = "READY";
+
+        Color old = GUI.color;
+        GUI.color = available ? AccentGreen : MutedText;
+        GUI.Label(new Rect(card.x + 12f, card.y + 27f, card.width - 24f, 17f), state, versionStyle);
+        GUI.color = old;
+    }
+
+    private bool DrawCycleButton(Rect rect, string label)
+    {
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.11f, 0.14f, 0.17f, 1f);
+        bool clicked = GUI.Button(rect, label, compactButtonStyle);
+        GUI.backgroundColor = oldBackground;
+        return clicked;
+    }
+
+    private void DrawQuestionHistoryCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "RECENT ANSWERS", cardHeadingStyle);
+        if (questionHistory.Count == 0)
+        {
+            GUI.Label(new Rect(card.x + 12f, card.y + 32f, card.width - 24f, card.height - 40f), "No questions answered yet.", emptyStateStyle);
+            return;
+        }
+
+        int count = Mathf.Min(3, questionHistory.Count);
+        for (int i = 0; i < count; i++)
+        {
+            string item = questionHistory[questionHistory.Count - 1 - i];
+            GUI.Label(new Rect(card.x + 12f, card.y + 31f + i * 19f, card.width - 24f, 18f), item, emptyStateStyle);
+        }
+    }
+
+    private bool QuestionUnlocked(float unlockSeconds)
+    {
+        return questionTestOverride || matchElapsedSeconds >= unlockSeconds;
+    }
+
+    private bool QuestionCooldownActive()
+    {
+        return !questionTestOverride && questionCooldownUntil > matchElapsedSeconds;
+    }
+
+    private float QuestionCooldownRemaining()
+    {
+        return Mathf.Max(0f, questionCooldownUntil - matchElapsedSeconds);
+    }
+
+    private bool CanApplyQuestion(float unlockSeconds, int cost)
+    {
+        if (selectedRole != PlayerRole.Seeker)
+            return false;
+        if (questionTestOverride)
+            return true;
+        if (!QuestionUnlocked(unlockSeconds) || QuestionCooldownActive())
+            return false;
+        return SeekerPointsBalance() >= cost;
+    }
+
+    private void ApplyQuestion(int cost, string description)
+    {
+        if (!questionTestOverride)
+        {
+            if (SeekerPointsBalance() < cost || QuestionCooldownActive())
+                return;
+            seekerPointsSpent += cost;
+            questionCooldownUntil = matchElapsedSeconds + QuestionCooldownSeconds;
+        }
+
+        questionHistory.Add($"{FormatTime(matchElapsedSeconds)} · {description}");
+        if (questionHistory.Count > 20)
+            questionHistory.RemoveAt(0);
+        CoreEntry.Logger?.LogInfo($"Question applied: {description}. Cost {cost} SP{(questionTestOverride ? " (test bypass)" : string.Empty)}.");
+    }
+
+    private int SeekerPointsEarned()
+    {
+        return Mathf.FloorToInt(matchElapsedSeconds / 60f) * PointsPerMinute;
+    }
+
+    private int SeekerPointsBalance()
+    {
+        return Mathf.Max(0, SeekerPointsEarned() - seekerPointsSpent);
+    }
+
+    private string NextQuestionStatus()
+    {
+        if (questionTestOverride)
+            return "Question test override is active.";
+        if (matchElapsedSeconds < CenterlineUnlockSeconds)
+            return $"Centerline unlocks in {FormatTime(CenterlineUnlockSeconds - matchElapsedSeconds)}.";
+        if (matchElapsedSeconds < NearestTowerUnlockSeconds)
+            return $"Nearest Tower unlocks in {FormatTime(NearestTowerUnlockSeconds - matchElapsedSeconds)}.";
+        if (matchElapsedSeconds < TowerRadiusUnlockSeconds)
+            return $"Tower Radius unlocks in {FormatTime(TowerRadiusUnlockSeconds - matchElapsedSeconds)}.";
+        return "All starter questions are unlocked.";
     }
 
     private void DrawNavigationPanel(Rect panel)
     {
-        DrawPanelRect(panel, PanelBackground, BorderColor);
-
         GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "MAP", panelHeadingStyle);
         GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Navigation + map tools", panelSubtitleStyle);
 
@@ -602,43 +1160,108 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
         GUI.enabled = hasRulerA;
-        if (GUI.Button(new Rect(card.x + 12f, card.y + 130f, card.width - 24f, 27f), "CLEAR RULER", compactButtonStyle))
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 128f, card.width - 24f, 27f), "CLEAR RULER", compactButtonStyle))
             ClearRuler();
         GUI.enabled = true;
         GUI.backgroundColor = oldBackground;
     }
 
-    private void DrawMetricRow(Rect card, float y, string label, string value)
+    private void DrawMorePanel(Rect panel)
     {
-        GUI.Label(new Rect(card.x + 12f, y, 132f, 20f), label, metricLabelStyle);
-        GUI.Label(new Rect(card.x + 146f, y, card.width - 158f, 20f), value, metricValueStyle);
-        DrawSolidRect(new Rect(card.x + 12f, y + 20f, card.width - 24f, 1f), new Color(1f, 1f, 1f, 0.07f));
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "MORE", panelHeadingStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Build info + development controls", panelSubtitleStyle);
+
+        float cardX = panel.x + 12f;
+        float cardWidth = panel.width - 24f;
+        float y = panel.y + 57f;
+
+        Rect build = new Rect(cardX, y, cardWidth, 128f);
+        DrawPanelRect(build, CardBackground, BorderColor);
+        GUI.Label(new Rect(build.x + 12f, build.y + 7f, build.width - 24f, 20f), "NATIVE MOD", cardHeadingStyle);
+        DrawMetricRow(build, build.y + 33f, "Core", "0.0.16");
+        DrawMetricRow(build, build.y + 55f, "Position source", "Unity PlayerCharacter");
+        DrawMetricRow(build, build.y + 77f, "Browser bridge", "Not required");
+        GUI.Label(new Rect(build.x + 12f, build.y + 101f, build.width - 24f, 20f), "The old live-tracker plugin is only for the website.", emptyStateStyle);
+        y += build.height + 10f;
+
+        Rect testing = new Rect(cardX, y, cardWidth, 146f);
+        DrawPanelRect(testing, CardBackground, BorderColor);
+        GUI.Label(new Rect(testing.x + 12f, testing.y + 7f, testing.width - 24f, 20f), "QUESTION TESTING", cardHeadingStyle);
+        GUI.Label(new Rect(testing.x + 12f, testing.y + 34f, testing.width - 24f, 40f), "Bypasses unlock timers, point costs, and cooldowns so the question UI can be tested immediately.", emptyStateStyle);
+
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = questionTestOverride ? new Color(0.20f, 0.43f, 0.29f, 1f) : new Color(0.16f, 0.19f, 0.23f, 1f);
+        if (GUI.Button(new Rect(testing.x + 12f, testing.y + 91f, testing.width - 24f, 38f), questionTestOverride ? "TEST OVERRIDE · ON" : "TEST OVERRIDE · OFF", compactButtonStyle))
+            questionTestOverride = !questionTestOverride;
+        GUI.backgroundColor = oldBackground;
+        y += testing.height + 10f;
+
+        Rect note = new Rect(cardX, y, cardWidth, 104f);
+        DrawPanelRect(note, CardBackground, BorderColor);
+        GUI.Label(new Rect(note.x + 12f, note.y + 7f, note.width - 24f, 20f), "CURRENT SCOPE", cardHeadingStyle);
+        GUI.Label(new Rect(note.x + 12f, note.y + 33f, note.width - 24f, 62f), "Gameplay state is local to this client for now. Multiplayer synchronization will be a separate layer after the local systems are proven.", emptyStateStyle);
     }
 
-    private void DrawBottomHint(float viewportHeight)
+    private void DrawToolDock(Rect dock)
     {
-        string hint;
-        if (activeTool == MapTool.Marker)
-            hint = "MARKER · Click map to place · Click marker to select · Wheel to zoom · F7/Esc close";
-        else if (activeTool == MapTool.Ruler)
-            hint = "RULER · Click A, then B · Third click starts over · Wheel to zoom · F7/Esc close";
-        else
-            hint = "PAN · Drag map · Click marker to select · Wheel to zoom · F7/Esc close";
+        DrawDockBackground(dock);
+        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 48f, 14f), "TOOLS", dockLabelStyle);
 
-        Rect pill = new Rect(UiMargin, viewportHeight - 38f, 690f, 26f);
-        DrawPanelRect(pill, new Color(17f / 255f, 21f / 255f, 27f / 255f, 0.94f), BorderColor);
-        GUI.Label(new Rect(pill.x + 10f, pill.y + 2f, pill.width - 20f, 22f), hint, hintStyle);
+        float y = dock.y + 15f;
+        if (DrawToolButton(new Rect(dock.x + 7f, y, 62f, 29f), "PAN", activeTool == MapTool.Pan))
+            activeTool = MapTool.Pan;
+        if (DrawToolButton(new Rect(dock.x + 76f, y, 72f, 29f), "MARKER", activeTool == MapTool.Marker))
+            activeTool = MapTool.Marker;
+        if (DrawToolButton(new Rect(dock.x + 155f, y, 64f, 29f), "RULER", activeTool == MapTool.Ruler))
+            activeTool = MapTool.Ruler;
+    }
+
+    private void DrawDisplayDock(Rect dock)
+    {
+        DrawDockBackground(dock);
+        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 70f, 14f), "DISPLAY", dockLabelStyle);
+
+        float y = dock.y + 15f;
+        showGrid = DrawToggleButton(new Rect(dock.x + 7f, y, 58f, 29f), "GRID", showGrid);
+        showTowers = DrawToggleButton(new Rect(dock.x + 72f, y, 76f, 29f), "TOWERS", showTowers);
+        showLandmarks = DrawToggleButton(new Rect(dock.x + 155f, y, 120f, 29f), "LANDMARKS", showLandmarks);
+    }
+
+    private void DrawActionDock(Rect dock, float viewportWidth, float viewportHeight)
+    {
+        DrawDockBackground(dock);
+        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 80f, 14f), "VIEW", dockLabelStyle);
+
+        float y = dock.y + 15f;
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
+
+        if (GUI.Button(new Rect(dock.x + 7f, y, 46f, 29f), "FIT", compactButtonStyle))
+            FitMap();
+
+        GUI.enabled = hasPlayerPosition;
+        if (GUI.Button(new Rect(dock.x + 60f, y, 76f, 29f), "CENTER", compactButtonStyle))
+            CenterOnPlayer(viewportWidth, viewportHeight);
+        GUI.enabled = true;
+
+        if (GUI.Button(new Rect(dock.x + 143f, y, 31f, 29f), "−", compactButtonStyle))
+            ZoomAt(viewportWidth, viewportHeight, new Vector2(viewportWidth * 0.5f, viewportHeight * 0.5f), 1f / 1.25f);
+        if (GUI.Button(new Rect(dock.x + 181f, y, 31f, 29f), "+", compactButtonStyle))
+            ZoomAt(viewportWidth, viewportHeight, new Vector2(viewportWidth * 0.5f, viewportHeight * 0.5f), 1.25f);
+
+        GUI.backgroundColor = oldBackground;
+        GUI.Label(new Rect(dock.x + 219f, y + 2f, 58f, 25f), $"{zoom:0.0}×", hintStyle);
     }
 
     private bool DrawToolButton(Rect rect, string label, bool active)
     {
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = active
-            ? new Color(0.30f, 0.25f, 0.10f, 1f)
+            ? new Color(0.29f, 0.24f, 0.09f, 1f)
             : new Color(0.16f, 0.19f, 0.23f, 1f);
         bool clicked = GUI.Button(rect, label, compactButtonStyle);
         if (active)
-            DrawSolidRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentYellow);
+            DrawSolidRect(new Rect(rect.x + 6f, rect.yMax - 2f, rect.width - 12f, 2f), AccentYellow);
         GUI.backgroundColor = oldBackground;
         return clicked;
     }
@@ -651,34 +1274,55 @@ public class HideSeekOverlay : MonoBehaviour
             : new Color(0.16f, 0.19f, 0.23f, 1f);
         bool clicked = GUI.Button(rect, label, compactButtonStyle);
         if (value)
-            DrawSolidRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentGreen);
+            DrawSolidRect(new Rect(rect.x + 6f, rect.yMax - 2f, rect.width - 12f, 2f), AccentGreen);
         GUI.backgroundColor = oldBackground;
         return clicked ? !value : value;
     }
 
-    private static void DrawDockBackground(Rect rect)
+    private void DrawDockBackground(Rect rect)
     {
-        DrawPanelRect(rect, new Color(17f / 255f, 21f / 255f, 27f / 255f, 0.96f), BorderColor);
-    }
-
-    private static void DrawPanelRect(Rect rect, Color fill, Color border)
-    {
-        DrawSolidRect(rect, border);
-        if (rect.width > 2f && rect.height > 2f)
-            DrawSolidRect(new Rect(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.height - 2f), fill);
-    }
-
-    private static void DrawSolidRect(Rect rect, Color color)
-    {
-        Color oldColor = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = oldColor;
+        DrawPanelRect(rect, new Color(0.067f, 0.082f, 0.106f, 0.96f), BorderColor);
     }
 
     private static Rect OffsetRect(Rect rect, float x, float y)
     {
         return new Rect(rect.x + x, rect.y + y, rect.width, rect.height);
+    }
+
+    private void DrawMetricRow(Rect card, float y, string label, string value)
+    {
+        GUI.Label(new Rect(card.x + 12f, y, card.width * 0.45f, 19f), label, metricLabelStyle);
+        GUI.Label(new Rect(card.x + card.width * 0.42f, y, card.width * 0.54f - 12f, 19f), value, metricValueStyle);
+        DrawSolidRect(new Rect(card.x + 12f, y + 20f, card.width - 24f, 1f), new Color(1f, 1f, 1f, 0.07f));
+    }
+
+    private static void DrawPanelRect(Rect rect, Color fill, Color border)
+    {
+        DrawSolidRect(rect, border);
+        DrawSolidRect(new Rect(rect.x + 1f, rect.y + 1f, Mathf.Max(0f, rect.width - 2f), Mathf.Max(0f, rect.height - 2f)), fill);
+    }
+
+    private static void DrawSolidRect(Rect rect, Color color)
+    {
+        Color old = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = old;
+    }
+
+    private void DrawBottomHint(float viewportHeight)
+    {
+        string hint;
+        if (activeTool == MapTool.Marker)
+            hint = "MARKER · Click map to place · Click marker to select · Wheel to zoom";
+        else if (activeTool == MapTool.Ruler)
+            hint = "RULER · Click A, then B · Third click starts a new ruler · Wheel to zoom";
+        else
+            hint = "PAN · Drag map · Click marker to select · Wheel to zoom";
+
+        Rect pill = new Rect(14f, viewportHeight - 32f, 480f, 22f);
+        DrawPanelRect(pill, new Color(0.055f, 0.068f, 0.088f, 0.93f), new Color(0.18f, 0.22f, 0.27f, 0.95f));
+        GUI.Label(new Rect(pill.x + 8f, pill.y + 1f, pill.width - 16f, pill.height - 2f), hint, hintStyle);
     }
 
     private Rect GetMapRect(float viewportWidth, float viewportHeight)
@@ -833,11 +1477,12 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldColor = GUI.color;
         GUI.color = new Color(0.04f, 0.05f, 0.07f, 0.98f);
         GUI.Label(glyphRect, "●", rulerPointOutlineStyle);
-        GUI.color = new Color(1f, 0.86f, 0.35f, 1f);
+        GUI.color = AccentYellow;
         GUI.Label(glyphRect, "●", rulerPointStyle);
         GUI.color = oldColor;
 
-        GUI.Label(new Rect(point.x + 12f, point.y - 10f, 28f, 20f), label, rulerLabelStyle);
+        Rect labelRect = new Rect(point.x + 12f, point.y - 10f, 28f, 20f);
+        GUI.Label(labelRect, label, rulerLabelStyle);
     }
 
     private static void DrawSafeSegmentedLine(Vector2 start, Vector2 end, Color color, float width)
@@ -867,13 +1512,14 @@ public class HideSeekOverlay : MonoBehaviour
             return;
 
         Vector2 game = OverlayPointToGame(mapRect, localMouse);
+
         const float width = 154f;
         const float height = 28f;
         float tipX = Mathf.Clamp(localMouse.x + 14f, 4f, Mathf.Max(4f, viewportWidth - width - 4f));
         float tipY = Mathf.Clamp(localMouse.y + 14f, 4f, Mathf.Max(4f, viewportHeight - height - 4f));
         Rect tip = new Rect(tipX, tipY, width, height);
 
-        DrawPanelRect(tip, new Color(0.03f, 0.04f, 0.055f, 0.96f), BorderColor);
+        DrawPanelRect(tip, new Color(0.03f, 0.04f, 0.055f, 0.96f), new Color(1f, 1f, 1f, 0.22f));
         GUI.Label(tip, $"Y {game.y:0}, X {game.x:0}", coordinateStyle);
     }
 
@@ -1088,6 +1734,14 @@ public class HideSeekOverlay : MonoBehaviour
         direction = directions[Mathf.RoundToInt(degrees / 45f) % 8];
     }
 
+    private static string FormatTime(float seconds)
+    {
+        int total = Mathf.Max(0, Mathf.FloorToInt(seconds));
+        int minutes = total / 60;
+        int secs = total % 60;
+        return $"{minutes:00}:{secs:00}";
+    }
+
     private void ZoomAt(float viewportWidth, float viewportHeight, Vector2 localPoint, float factor)
     {
         if (mapTexture == null)
@@ -1143,7 +1797,7 @@ public class HideSeekOverlay : MonoBehaviour
 
         brandStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 18,
+            fontSize = 16,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleLeft,
             normal = { textColor = Color.white }
@@ -1159,10 +1813,10 @@ public class HideSeekOverlay : MonoBehaviour
 
         statusStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 13,
+            fontSize = 11,
             fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleRight,
-            normal = { textColor = AccentCyan }
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
         };
 
         hintStyle = new GUIStyle(GUI.skin.label)
@@ -1190,6 +1844,12 @@ public class HideSeekOverlay : MonoBehaviour
         compactButtonStyle.hover.textColor = Color.white;
         compactButtonStyle.active.textColor = Color.white;
         compactButtonStyle.focused.textColor = Color.white;
+
+        tabButtonStyle = new GUIStyle(compactButtonStyle)
+        {
+            fontSize = 10,
+            alignment = TextAnchor.MiddleCenter
+        };
 
         panelHeadingStyle = new GUIStyle(GUI.skin.label)
         {
@@ -1220,6 +1880,9 @@ public class HideSeekOverlay : MonoBehaviour
         markerCardHeadingStyle = new GUIStyle(cardHeadingStyle);
         markerCardHeadingStyle.normal.textColor = AccentYellow;
 
+        missionCardHeadingStyle = new GUIStyle(cardHeadingStyle);
+        missionCardHeadingStyle.normal.textColor = AccentPurple;
+
         metricLabelStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 11,
@@ -1240,6 +1903,30 @@ public class HideSeekOverlay : MonoBehaviour
             fontSize = 11,
             wordWrap = true,
             alignment = TextAnchor.UpperLeft,
+            normal = { textColor = MutedText }
+        };
+
+        bigNumberStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 19,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleRight,
+            normal = { textColor = Color.white }
+        };
+
+        objectiveTitleStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 23,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = Color.white }
+        };
+
+        objectiveEyebrowStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 9,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
             normal = { textColor = MutedText }
         };
 
@@ -1352,7 +2039,7 @@ public class HideSeekOverlay : MonoBehaviour
             fontSize = 13,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.45f, 0.9f, 1f) }
+            normal = { textColor = AccentCyan }
         };
 
         rulerPointOutlineStyle = new GUIStyle(GUI.skin.label)
@@ -1397,6 +2084,20 @@ public class HideSeekOverlay : MonoBehaviour
         Pan,
         Marker,
         Ruler
+    }
+
+    private enum UiTab
+    {
+        Game,
+        Questions,
+        Map,
+        More
+    }
+
+    private enum PlayerRole
+    {
+        Seeker,
+        Hider
     }
 
     private sealed class MapFeature
