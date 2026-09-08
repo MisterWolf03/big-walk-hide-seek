@@ -1,4 +1,4 @@
-name: Apply Core 0.0.22 Map Stabilization
+name: Apply Core 0.0.23 Safe Minimap Draw
 
 on:
   push:
@@ -18,10 +18,10 @@ jobs:
           ref: mod-prototype
           fetch-depth: 0
 
-      - name: Stabilize runtime map texture
-        run: python dev-tools/apply_core_0_0_22_stabilize_map_texture.py
+      - name: Replace unsafe minimap texture drawing
+        run: python dev-tools/apply_core_0_0_23_safe_minimap_draw.py
 
-      - name: Commit map stabilization fix
+      - name: Commit safe minimap rendering fix
         run: |
           if git diff --quiet; then
             echo 'No changes produced.'
@@ -30,5 +30,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add in-game-mod/core/CoreEntry.cs in-game-mod/core/BigWalkHideSeek.Core.csproj
-          git commit -m 'Stabilize map texture after world spawn'
+          git commit -m 'Avoid unsafe minimap texture coordinates on IL2CPP'
           git push origin HEAD:mod-prototype
