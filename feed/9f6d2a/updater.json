@@ -7,10 +7,10 @@
     "encoding": "gzip-base64"
   },
   "core": {
-    "version": "0.0.12.0",
+    "version": "0.0.13.0",
     "url": "https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Core.gz.b64",
-    "sha256": "ae56fbc22255cbd352c033e3afaee690475eb13dbd1a45ed378a9b197d9990bf",
+    "sha256": "397dc924a6547b266b6883ac32f4f9d331c23b5b2295a0cd8ac076efe9fe57ba",
     "encoding": "gzip-base64"
   },
-  "releaseNotes": "Core 0.0.12.0 update."
+  "releaseNotes": "Core 0.0.13.0 update."
 }
