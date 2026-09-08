@@ -32,3 +32,5 @@ jobs:
           git add in-game-mod/core/CoreEntry.cs in-game-mod/core/BigWalkHideSeek.Core.csproj
           git commit -m 'Add role-aware HUD settings and notifications'
           git push origin HEAD:mod-prototype
+
+# trigger retry
