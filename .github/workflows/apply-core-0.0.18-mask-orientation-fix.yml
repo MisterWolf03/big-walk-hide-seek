@@ -18,8 +18,10 @@ jobs:
           ref: mod-prototype
           fetch-depth: 0
 
-      - name: Apply minimap overlays and audio fix
-        run: python dev-tools/apply_core_0_0_24_minimap_overlays_audio.py
+      - name: Correct patch source and apply fixes
+        run: |
+          sed -i 's/740f/760f/g' dev-tools/apply_core_0_0_24_minimap_overlays_audio.py
+          python dev-tools/apply_core_0_0_24_minimap_overlays_audio.py
 
       - name: Commit Core 0.0.24 fixes
         run: |
@@ -29,6 +31,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add in-game-mod/core/CoreEntry.cs in-game-mod/core/BigWalkHideSeek.Core.csproj
+          git add dev-tools/apply_core_0_0_24_minimap_overlays_audio.py in-game-mod/core/CoreEntry.cs in-game-mod/core/BigWalkHideSeek.Core.csproj
           git commit -m 'Improve minimap overlays and notification audio'
           git push origin HEAD:mod-prototype
