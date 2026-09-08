@@ -15,7 +15,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.14 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.15 configured.");
     }
 }
 
@@ -23,6 +23,9 @@ public class HideSeekOverlay : MonoBehaviour
 {
     private const string MapResourceName = "BigWalkHideSeek.Core.big-walk-map.bgra";
     private const float InvSqrt2 = 0.70710678118f;
+    private const float TopBarHeight = 58f;
+    private const float UiMargin = 14f;
+    private const float SidePanelWidth = 390f;
 
     private const double MapA = 1.01872096;
     private const double MapB = 0.00000814424539;
@@ -30,6 +33,16 @@ public class HideSeekOverlay : MonoBehaviour
     private const double MapD = -0.00223877926;
     private const double MapE = 1.01939961;
     private const double MapF = -3130.54945;
+
+    private static readonly Color PageBackground = new Color(14f / 255f, 17f / 255f, 22f / 255f, 1f);
+    private static readonly Color TopBarBackground = new Color(17f / 255f, 21f / 255f, 27f / 255f, 0.99f);
+    private static readonly Color PanelBackground = new Color(24f / 255f, 29f / 255f, 36f / 255f, 0.98f);
+    private static readonly Color CardBackground = new Color(34f / 255f, 41f / 255f, 52f / 255f, 0.98f);
+    private static readonly Color BorderColor = new Color(48f / 255f, 57f / 255f, 71f / 255f, 1f);
+    private static readonly Color MutedText = new Color(170f / 255f, 179f / 255f, 192f / 255f, 1f);
+    private static readonly Color AccentYellow = new Color(242f / 255f, 201f / 255f, 76f / 255f, 1f);
+    private static readonly Color AccentGreen = new Color(117f / 255f, 224f / 255f, 163f / 255f, 1f);
+    private static readonly Color AccentCyan = new Color(0.24f, 0.86f, 1f, 1f);
 
     private static readonly MapFeature[] Towers = new[]
     {
@@ -76,15 +89,20 @@ public class HideSeekOverlay : MonoBehaviour
     private Vector2 rulerA;
     private Vector2 rulerB;
 
-    private GUIStyle titleStyle;
-    private GUIStyle subtitleStyle;
+    private GUIStyle brandStyle;
+    private GUIStyle versionStyle;
     private GUIStyle statusStyle;
     private GUIStyle hintStyle;
-    private GUIStyle markerShadowStyle;
-    private GUIStyle markerOuterStyle;
-    private GUIStyle markerStyle;
-    private GUIStyle markerCoreStyle;
-    private GUIStyle youLabelStyle;
+    private GUIStyle dockLabelStyle;
+    private GUIStyle compactButtonStyle;
+    private GUIStyle panelHeadingStyle;
+    private GUIStyle panelSubtitleStyle;
+    private GUIStyle cardHeadingStyle;
+    private GUIStyle liveCardHeadingStyle;
+    private GUIStyle markerCardHeadingStyle;
+    private GUIStyle metricLabelStyle;
+    private GUIStyle metricValueStyle;
+    private GUIStyle emptyStateStyle;
     private GUIStyle mapMessageStyle;
     private GUIStyle gridLabelStyle;
     private GUIStyle featureOutlineStyle;
@@ -94,9 +112,11 @@ public class HideSeekOverlay : MonoBehaviour
     private GUIStyle userMarkerOutlineStyle;
     private GUIStyle userMarkerStyle;
     private GUIStyle userMarkerLabelStyle;
-    private GUIStyle markerPanelTitleStyle;
-    private GUIStyle markerPanelValueStyle;
-    private GUIStyle livePanelTitleStyle;
+    private GUIStyle markerShadowStyle;
+    private GUIStyle markerOuterStyle;
+    private GUIStyle markerStyle;
+    private GUIStyle markerCoreStyle;
+    private GUIStyle youLabelStyle;
     private GUIStyle rulerPointOutlineStyle;
     private GUIStyle rulerPointStyle;
     private GUIStyle rulerLabelStyle;
@@ -316,12 +336,12 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldColor = GUI.color;
         Color oldBackground = GUI.backgroundColor;
 
-        GUI.color = new Color(0.035f, 0.043f, 0.055f, 0.985f);
-        GUI.Box(new Rect(0f, 0f, Screen.width, Screen.height), GUIContent.none);
+        GUI.color = PageBackground;
+        GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
         DrawTopBar();
-        Rect viewport = new Rect(14f, 66f, Mathf.Max(100f, Screen.width - 28f), Mathf.Max(100f, Screen.height - 90f));
+        Rect viewport = new Rect(0f, TopBarHeight, Screen.width, Mathf.Max(100f, Screen.height - TopBarHeight));
         DrawMap(viewport);
 
         GUI.color = oldColor;
@@ -334,61 +354,59 @@ public class HideSeekOverlay : MonoBehaviour
 
     private void DrawTopBar()
     {
-        GUI.Label(new Rect(18f, 8f, 430f, 30f), "BIG WALK HIDE + SEEK", titleStyle);
-        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.14", subtitleStyle);
+        DrawSolidRect(new Rect(0f, 0f, Screen.width, TopBarHeight), TopBarBackground);
+        DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
+
+        GUI.Label(new Rect(16f, 6f, 360f, 27f), "BIG WALK HIDE + SEEK", brandStyle);
+        GUI.Label(new Rect(18f, 31f, 320f, 18f), "CORE v0.0.15 · MAP", versionStyle);
 
         string status = hasPlayerPosition
-            ? $"LIVE  ·  X {gameX:0}   Y {gameY:0}"
+            ? $"LIVE · Y {gameY:0}, X {gameX:0}"
             : "SEARCHING FOR PLAYER…";
-        GUI.Label(new Rect(Mathf.Max(460f, Screen.width - 500f), 15f, 360f, 28f), status, statusStyle);
+        GUI.Label(new Rect(Mathf.Max(420f, Screen.width - 525f), 13f, 390f, 30f), status, statusStyle);
 
-        if (GUI.Button(new Rect(Screen.width - 116f, 12f, 96f, 38f), "CLOSE"))
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
+        if (GUI.Button(new Rect(Screen.width - 104f, 11f, 88f, 36f), "CLOSE", compactButtonStyle))
             SetOverlayOpen(false);
+        GUI.backgroundColor = oldBackground;
     }
 
     private void DrawMap(Rect viewport)
     {
-        GUI.backgroundColor = new Color(0.015f, 0.02f, 0.028f, 1f);
-        GUI.Box(viewport, GUIContent.none);
-        GUI.backgroundColor = Color.white;
-
         if (mapTexture == null)
         {
             string message = string.IsNullOrEmpty(mapLoadError)
                 ? "Loading Big Walk map…"
                 : $"Map failed to load\n{mapLoadError}";
-            GUI.Label(viewport, message, mapMessageStyle);
+            GUI.Label(new Rect(0f, TopBarHeight, Screen.width, Screen.height - TopBarHeight), message, mapMessageStyle);
             return;
         }
 
-        const float controlWidth = 808f;
-        const float sidePanelWidth = 276f;
-        const float playerPanelY = 62f;
-        const float playerPanelHeight = 142f;
-        const float markerPanelY = 212f;
-        const float markerPanelHeight = 172f;
-        float rulerPanelY = userMarkers.Count > 0 ? 392f : 212f;
-        const float rulerPanelHeight = 146f;
+        float sideWidth = Mathf.Min(SidePanelWidth, Mathf.Max(320f, viewport.width * 0.34f));
+        Rect toolDock = new Rect(UiMargin, UiMargin, 226f, 50f);
+        Rect displayDock = new Rect(toolDock.xMax + 8f, UiMargin, 282f, 50f);
+        Rect actionDock = new Rect(UiMargin, 72f, 284f, 50f);
+        Rect sidePanel = new Rect(viewport.width - sideWidth - UiMargin, UiMargin, sideWidth, Mathf.Min(584f, viewport.height - UiMargin * 2f));
 
-        Rect controlRectGlobal = new Rect(viewport.x + 10f, viewport.y + 10f, controlWidth, 42f);
-        Rect playerPanelGlobal = new Rect(viewport.x + viewport.width - sidePanelWidth - 10f, viewport.y + playerPanelY, sidePanelWidth, playerPanelHeight);
-        Rect markerPanelGlobal = userMarkers.Count > 0
-            ? new Rect(viewport.x + viewport.width - sidePanelWidth - 10f, viewport.y + markerPanelY, sidePanelWidth, markerPanelHeight)
-            : new Rect(-1000f, -1000f, 0f, 0f);
-        Rect rulerPanelGlobal = (activeTool == MapTool.Ruler || hasRulerA)
-            ? new Rect(viewport.x + viewport.width - sidePanelWidth - 10f, viewport.y + rulerPanelY, sidePanelWidth, rulerPanelHeight)
-            : new Rect(-1000f, -1000f, 0f, 0f);
+        if (displayDock.xMax > sidePanel.x - 8f)
+            displayDock = new Rect(UiMargin, 130f, 282f, 50f);
+
+        Rect toolDockGlobal = OffsetRect(toolDock, viewport.x, viewport.y);
+        Rect displayDockGlobal = OffsetRect(displayDock, viewport.x, viewport.y);
+        Rect actionDockGlobal = OffsetRect(actionDock, viewport.x, viewport.y);
+        Rect sidePanelGlobal = OffsetRect(sidePanel, viewport.x, viewport.y);
 
         Rect mapRect = GetMapRect(viewport.width, viewport.height);
-        HandleMapInput(viewport, controlRectGlobal, playerPanelGlobal, markerPanelGlobal, rulerPanelGlobal, mapRect);
+        HandleMapInput(viewport, toolDockGlobal, displayDockGlobal, actionDockGlobal, sidePanelGlobal, mapRect);
 
         Event evt = Event.current;
         Vector2 globalMouse = evt != null ? evt.mousePosition : new Vector2(-1000f, -1000f);
         bool canShowCoordinateTip = viewport.Contains(globalMouse)
-            && !controlRectGlobal.Contains(globalMouse)
-            && !playerPanelGlobal.Contains(globalMouse)
-            && !markerPanelGlobal.Contains(globalMouse)
-            && !rulerPanelGlobal.Contains(globalMouse);
+            && !toolDockGlobal.Contains(globalMouse)
+            && !displayDockGlobal.Contains(globalMouse)
+            && !actionDockGlobal.Contains(globalMouse)
+            && !sidePanelGlobal.Contains(globalMouse);
         Vector2 localMouse = new Vector2(globalMouse.x - viewport.x, globalMouse.y - viewport.y);
 
         GUI.BeginGroup(viewport);
@@ -404,93 +422,263 @@ public class HideSeekOverlay : MonoBehaviour
 
         DrawRuler(mapRect);
         DrawUserMarkers(mapRect);
-
         if (hasPlayerPosition)
             DrawPlayerMarker(mapRect);
 
-        GUI.backgroundColor = new Color(0.08f, 0.095f, 0.12f, 0.96f);
-        GUI.Box(new Rect(10f, 10f, controlWidth, 42f), GUIContent.none);
-        GUI.backgroundColor = Color.white;
-
-        float x = 16f;
-        if (GUI.Button(new Rect(x, 15f, 54f, 32f), "FIT")) FitMap();
-        x += 60f;
-
-        GUI.enabled = hasPlayerPosition;
-        if (GUI.Button(new Rect(x, 15f, 96f, 32f), "CENTER ME")) CenterOnPlayer(viewport.width, viewport.height);
-        GUI.enabled = true;
-        x += 102f;
-
-        if (GUI.Button(new Rect(x, 15f, 36f, 32f), "−"))
-            ZoomAt(viewport.width, viewport.height, new Vector2(viewport.width * 0.5f, viewport.height * 0.5f), 1f / 1.25f);
-        x += 42f;
-
-        if (GUI.Button(new Rect(x, 15f, 36f, 32f), "+"))
-            ZoomAt(viewport.width, viewport.height, new Vector2(viewport.width * 0.5f, viewport.height * 0.5f), 1.25f);
-        x += 42f;
-
-        GUI.Label(new Rect(x, 19f, 48f, 24f), $"{zoom:0.0}×", hintStyle);
-        x += 54f;
-
-        if (DrawToolButton(new Rect(x, 15f, 54f, 32f), "PAN", activeTool == MapTool.Pan))
-            activeTool = MapTool.Pan;
-        x += 60f;
-        if (DrawToolButton(new Rect(x, 15f, 76f, 32f), "MARKER", activeTool == MapTool.Marker))
-            activeTool = MapTool.Marker;
-        x += 82f;
-        if (DrawToolButton(new Rect(x, 15f, 70f, 32f), "RULER", activeTool == MapTool.Ruler))
-            activeTool = MapTool.Ruler;
-        x += 76f;
-
-        showGrid = DrawToggleButton(new Rect(x, 15f, 64f, 32f), "GRID", showGrid);
-        x += 70f;
-        showTowers = DrawToggleButton(new Rect(x, 15f, 80f, 32f), "TOWERS", showTowers);
-        x += 86f;
-        showLandmarks = DrawToggleButton(new Rect(x, 15f, 104f, 32f), "LANDMARKS", showLandmarks);
-
-        DrawPlayerInfoPanel(viewport.width, sidePanelWidth, playerPanelY, playerPanelHeight);
-
-        if (userMarkers.Count > 0)
-            DrawMarkerPanel(viewport.width, sidePanelWidth, markerPanelY, markerPanelHeight);
-
-        if (activeTool == MapTool.Ruler || hasRulerA)
-            DrawRulerPanel(viewport.width, sidePanelWidth, rulerPanelY, rulerPanelHeight);
+        DrawToolDock(toolDock);
+        DrawDisplayDock(displayDock);
+        DrawActionDock(actionDock, viewport.width, viewport.height);
+        DrawNavigationPanel(sidePanel);
 
         if (canShowCoordinateTip)
             DrawCoordinateTip(localMouse, mapRect, viewport.width, viewport.height);
 
-        string hint;
-        if (activeTool == MapTool.Marker)
-            hint = "MARKER mode · Click map to place · Click marker to select · Mouse wheel to zoom · F7/Esc close";
-        else if (activeTool == MapTool.Ruler)
-            hint = "RULER mode · Click A, then B · Third click starts a new ruler · Mouse wheel to zoom · F7/Esc close";
-        else
-            hint = "PAN mode · Drag to pan · Click marker to select · Mouse wheel to zoom · F7/Esc close";
-        GUI.Label(new Rect(12f, viewport.height - 28f, 980f, 20f), hint, hintStyle);
+        DrawBottomHint(viewport.height);
 
         GUI.EndGroup();
     }
 
-    private bool DrawToggleButton(Rect rect, string label, bool value)
+    private void DrawToolDock(Rect dock)
     {
+        DrawDockBackground(dock);
+        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 48f, 14f), "TOOLS", dockLabelStyle);
+
+        float y = dock.y + 15f;
+        if (DrawToolButton(new Rect(dock.x + 7f, y, 62f, 29f), "PAN", activeTool == MapTool.Pan))
+            activeTool = MapTool.Pan;
+        if (DrawToolButton(new Rect(dock.x + 76f, y, 72f, 29f), "MARKER", activeTool == MapTool.Marker))
+            activeTool = MapTool.Marker;
+        if (DrawToolButton(new Rect(dock.x + 155f, y, 64f, 29f), "RULER", activeTool == MapTool.Ruler))
+            activeTool = MapTool.Ruler;
+    }
+
+    private void DrawDisplayDock(Rect dock)
+    {
+        DrawDockBackground(dock);
+        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 70f, 14f), "DISPLAY", dockLabelStyle);
+
+        float y = dock.y + 15f;
+        showGrid = DrawToggleButton(new Rect(dock.x + 7f, y, 58f, 29f), "GRID", showGrid);
+        showTowers = DrawToggleButton(new Rect(dock.x + 72f, y, 76f, 29f), "TOWERS", showTowers);
+        showLandmarks = DrawToggleButton(new Rect(dock.x + 155f, y, 120f, 29f), "LANDMARKS", showLandmarks);
+    }
+
+    private void DrawActionDock(Rect dock, float viewportWidth, float viewportHeight)
+    {
+        DrawDockBackground(dock);
+        GUI.Label(new Rect(dock.x + 7f, dock.y + 2f, 80f, 14f), "VIEW", dockLabelStyle);
+
+        float y = dock.y + 15f;
         Color oldBackground = GUI.backgroundColor;
-        GUI.backgroundColor = value
-            ? new Color(0.28f, 0.47f, 0.34f, 1f)
-            : new Color(0.16f, 0.18f, 0.22f, 1f);
-        bool clicked = GUI.Button(rect, label);
+        GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
+
+        if (GUI.Button(new Rect(dock.x + 7f, y, 46f, 29f), "FIT", compactButtonStyle))
+            FitMap();
+
+        GUI.enabled = hasPlayerPosition;
+        if (GUI.Button(new Rect(dock.x + 60f, y, 76f, 29f), "CENTER", compactButtonStyle))
+            CenterOnPlayer(viewportWidth, viewportHeight);
+        GUI.enabled = true;
+
+        if (GUI.Button(new Rect(dock.x + 143f, y, 31f, 29f), "−", compactButtonStyle))
+            ZoomAt(viewportWidth, viewportHeight, new Vector2(viewportWidth * 0.5f, viewportHeight * 0.5f), 1f / 1.25f);
+        if (GUI.Button(new Rect(dock.x + 181f, y, 31f, 29f), "+", compactButtonStyle))
+            ZoomAt(viewportWidth, viewportHeight, new Vector2(viewportWidth * 0.5f, viewportHeight * 0.5f), 1.25f);
+
         GUI.backgroundColor = oldBackground;
-        return clicked ? !value : value;
+        GUI.Label(new Rect(dock.x + 219f, y + 2f, 58f, 25f), $"{zoom:0.0}×", hintStyle);
+    }
+
+    private void DrawNavigationPanel(Rect panel)
+    {
+        DrawPanelRect(panel, PanelBackground, BorderColor);
+
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "MAP", panelHeadingStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Navigation + map tools", panelSubtitleStyle);
+
+        float cardX = panel.x + 12f;
+        float cardWidth = panel.width - 24f;
+        float y = panel.y + 57f;
+
+        Rect playerCard = new Rect(cardX, y, cardWidth, 150f);
+        DrawPlayerCard(playerCard);
+        y += playerCard.height + 10f;
+
+        Rect markerCard = new Rect(cardX, y, cardWidth, 185f);
+        DrawMarkerCard(markerCard);
+        y += markerCard.height + 10f;
+
+        Rect rulerCard = new Rect(cardX, y, cardWidth, 165f);
+        DrawRulerCard(rulerCard);
+    }
+
+    private void DrawPlayerCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "YOUR POSITION", liveCardHeadingStyle);
+
+        if (!hasPlayerPosition)
+        {
+            GUI.Label(new Rect(card.x + 12f, card.y + 40f, card.width - 24f, 52f), "Searching for PlayerCharacter…", emptyStateStyle);
+            return;
+        }
+
+        MapFeature nearest = NearestTowerAt(gameX, gameY, out float distance);
+        BearingInfo(gameX, gameY, nearest.X, nearest.Y, out float degrees, out string direction);
+
+        float y = card.y + 31f;
+        DrawMetricRow(card, y, "Coordinates", $"Y {gameY:0}, X {gameX:0}"); y += 22f;
+        DrawMetricRow(card, y, "Grid square", GridSquare(gameX, gameY)); y += 22f;
+        DrawMetricRow(card, y, "Nearest tower", nearest.Name); y += 22f;
+        DrawMetricRow(card, y, "Tower distance", $"{distance:0} units"); y += 22f;
+        DrawMetricRow(card, y, "Tower direction", $"{direction} ({degrees:0}°)");
+    }
+
+    private void DrawMarkerCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), $"ACTIVE MARKER · {userMarkers.Count} SAVED", markerCardHeadingStyle);
+
+        UserMarker active = GetActiveMarker();
+        if (active == null)
+        {
+            string message = userMarkers.Count == 0
+                ? "Choose MARKER, then click the map to place one."
+                : "Click a saved marker on the map to select it.";
+            GUI.Label(new Rect(card.x + 12f, card.y + 40f, card.width - 24f, 54f), message, emptyStateStyle);
+        }
+        else
+        {
+            MapFeature nearest = NearestTowerAt(active.X, active.Y, out float distance);
+            BearingInfo(active.X, active.Y, nearest.X, nearest.Y, out float degrees, out string direction);
+
+            float y = card.y + 31f;
+            DrawMetricRow(card, y, "Marker", $"M{active.Id}"); y += 22f;
+            DrawMetricRow(card, y, "Coordinates", $"Y {active.Y:0}, X {active.X:0}"); y += 22f;
+            DrawMetricRow(card, y, "Grid square", GridSquare(active.X, active.Y)); y += 22f;
+            DrawMetricRow(card, y, "Nearest tower", nearest.Name); y += 22f;
+            DrawMetricRow(card, y, "Tower", $"{distance:0} units · {direction} ({degrees:0}°)");
+        }
+
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.25f, 0.14f, 0.15f, 1f);
+        GUI.enabled = active != null;
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 150f, 132f, 27f), "REMOVE ACTIVE", compactButtonStyle))
+            RemoveActiveMarker();
+        GUI.enabled = userMarkers.Count > 0;
+        if (GUI.Button(new Rect(card.x + card.width - 120f, card.y + 150f, 108f, 27f), "CLEAR ALL", compactButtonStyle))
+            ClearAllMarkers();
+        GUI.enabled = true;
+        GUI.backgroundColor = oldBackground;
+    }
+
+    private void DrawRulerCard(Rect card)
+    {
+        DrawPanelRect(card, CardBackground, BorderColor);
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "DISTANCE + BEARING", cardHeadingStyle);
+
+        if (!hasRulerA)
+        {
+            GUI.Label(new Rect(card.x + 12f, card.y + 39f, card.width - 24f, 46f), "Choose RULER, then click point A and point B.", emptyStateStyle);
+        }
+        else if (!hasRulerB)
+        {
+            float y = card.y + 31f;
+            DrawMetricRow(card, y, "Point A", $"Y {rulerA.y:0}, X {rulerA.x:0}"); y += 22f;
+            DrawMetricRow(card, y, "Point B", "Click map to set");
+        }
+        else
+        {
+            float distance = Vector2.Distance(rulerA, rulerB);
+            BearingInfo(rulerA.x, rulerA.y, rulerB.x, rulerB.y, out float degrees, out string direction);
+
+            float y = card.y + 31f;
+            DrawMetricRow(card, y, "Point A", $"Y {rulerA.y:0}, X {rulerA.x:0}"); y += 22f;
+            DrawMetricRow(card, y, "Point B", $"Y {rulerB.y:0}, X {rulerB.x:0}"); y += 22f;
+            DrawMetricRow(card, y, "Distance", $"{distance:0} units"); y += 22f;
+            DrawMetricRow(card, y, "Bearing A → B", $"{direction} ({degrees:0}°)");
+        }
+
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.16f, 0.19f, 0.23f, 1f);
+        GUI.enabled = hasRulerA;
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 130f, card.width - 24f, 27f), "CLEAR RULER", compactButtonStyle))
+            ClearRuler();
+        GUI.enabled = true;
+        GUI.backgroundColor = oldBackground;
+    }
+
+    private void DrawMetricRow(Rect card, float y, string label, string value)
+    {
+        GUI.Label(new Rect(card.x + 12f, y, 132f, 20f), label, metricLabelStyle);
+        GUI.Label(new Rect(card.x + 146f, y, card.width - 158f, 20f), value, metricValueStyle);
+        DrawSolidRect(new Rect(card.x + 12f, y + 20f, card.width - 24f, 1f), new Color(1f, 1f, 1f, 0.07f));
+    }
+
+    private void DrawBottomHint(float viewportHeight)
+    {
+        string hint;
+        if (activeTool == MapTool.Marker)
+            hint = "MARKER · Click map to place · Click marker to select · Wheel to zoom · F7/Esc close";
+        else if (activeTool == MapTool.Ruler)
+            hint = "RULER · Click A, then B · Third click starts over · Wheel to zoom · F7/Esc close";
+        else
+            hint = "PAN · Drag map · Click marker to select · Wheel to zoom · F7/Esc close";
+
+        Rect pill = new Rect(UiMargin, viewportHeight - 38f, 690f, 26f);
+        DrawPanelRect(pill, new Color(17f / 255f, 21f / 255f, 27f / 255f, 0.94f), BorderColor);
+        GUI.Label(new Rect(pill.x + 10f, pill.y + 2f, pill.width - 20f, 22f), hint, hintStyle);
     }
 
     private bool DrawToolButton(Rect rect, string label, bool active)
     {
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = active
-            ? new Color(0.18f, 0.48f, 0.67f, 1f)
-            : new Color(0.16f, 0.18f, 0.22f, 1f);
-        bool clicked = GUI.Button(rect, label);
+            ? new Color(0.30f, 0.25f, 0.10f, 1f)
+            : new Color(0.16f, 0.19f, 0.23f, 1f);
+        bool clicked = GUI.Button(rect, label, compactButtonStyle);
+        if (active)
+            DrawSolidRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentYellow);
         GUI.backgroundColor = oldBackground;
         return clicked;
+    }
+
+    private bool DrawToggleButton(Rect rect, string label, bool value)
+    {
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = value
+            ? new Color(0.15f, 0.24f, 0.19f, 1f)
+            : new Color(0.16f, 0.19f, 0.23f, 1f);
+        bool clicked = GUI.Button(rect, label, compactButtonStyle);
+        if (value)
+            DrawSolidRect(new Rect(rect.x, rect.y + rect.height - 2f, rect.width, 2f), AccentGreen);
+        GUI.backgroundColor = oldBackground;
+        return clicked ? !value : value;
+    }
+
+    private static void DrawDockBackground(Rect rect)
+    {
+        DrawPanelRect(rect, new Color(17f / 255f, 21f / 255f, 27f / 255f, 0.96f), BorderColor);
+    }
+
+    private static void DrawPanelRect(Rect rect, Color fill, Color border)
+    {
+        DrawSolidRect(rect, border);
+        if (rect.width > 2f && rect.height > 2f)
+            DrawSolidRect(new Rect(rect.x + 1f, rect.y + 1f, rect.width - 2f, rect.height - 2f), fill);
+    }
+
+    private static void DrawSolidRect(Rect rect, Color color)
+    {
+        Color oldColor = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = oldColor;
+    }
+
+    private static Rect OffsetRect(Rect rect, float x, float y)
+    {
+        return new Rect(rect.x + x, rect.y + y, rect.width, rect.height);
     }
 
     private Rect GetMapRect(float viewportWidth, float viewportHeight)
@@ -610,7 +798,7 @@ public class HideSeekOverlay : MonoBehaviour
             Color oldColor = GUI.color;
             GUI.color = active ? Color.white : new Color(0.08f, 0.09f, 0.11f, 0.98f);
             GUI.Label(glyphRect, "◆", userMarkerOutlineStyle);
-            GUI.color = new Color(1f, 0.76f, 0.18f, 1f);
+            GUI.color = AccentYellow;
             GUI.Label(glyphRect, "◆", userMarkerStyle);
 
             Rect labelRect = new Rect(point.x + 14f, point.y - 10f, 56f, 22f);
@@ -621,69 +809,6 @@ public class HideSeekOverlay : MonoBehaviour
             GUI.Label(labelRect, $"M{marker.Id}", userMarkerLabelStyle);
             GUI.color = oldColor;
         }
-    }
-
-    private void DrawPlayerInfoPanel(float viewportWidth, float panelWidth, float panelY, float panelHeight)
-    {
-        Rect panel = new Rect(viewportWidth - panelWidth - 10f, panelY, panelWidth, panelHeight);
-        DrawInfoPanelBackground(panel);
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 8f, panel.width - 24f, 20f), "YOU · LIVE NAVIGATION", livePanelTitleStyle);
-
-        if (!hasPlayerPosition)
-        {
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 36f, panel.width - 24f, 40f), "Searching for PlayerCharacter…", markerPanelValueStyle);
-            return;
-        }
-
-        MapFeature nearest = NearestTowerAt(gameX, gameY, out float distance);
-        BearingInfo(gameX, gameY, nearest.X, nearest.Y, out float degrees, out string direction);
-
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 31f, panel.width - 24f, 18f), $"Coordinates: Y {gameY:0}, X {gameX:0}", markerPanelValueStyle);
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 50f, panel.width - 24f, 18f), $"Grid square: {GridSquare(gameX, gameY)}", markerPanelValueStyle);
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 69f, panel.width - 24f, 18f), $"Nearest tower: {nearest.Name}", markerPanelValueStyle);
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 88f, panel.width - 24f, 18f), $"Tower distance: {distance:0} units", markerPanelValueStyle);
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 107f, panel.width - 24f, 18f), $"Tower direction: {direction} ({degrees:0}°)", markerPanelValueStyle);
-    }
-
-    private void DrawMarkerPanel(float viewportWidth, float panelWidth, float panelY, float panelHeight)
-    {
-        Rect panel = new Rect(viewportWidth - panelWidth - 10f, panelY, panelWidth, panelHeight);
-        DrawInfoPanelBackground(panel);
-
-        UserMarker active = GetActiveMarker();
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 8f, panel.width - 24f, 20f), $"MARKERS · {userMarkers.Count}", markerPanelTitleStyle);
-
-        if (active != null)
-        {
-            MapFeature nearest = NearestTowerAt(active.X, active.Y, out float distance);
-            BearingInfo(active.X, active.Y, nearest.X, nearest.Y, out float degrees, out string direction);
-
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 29f, panel.width - 24f, 18f), $"Active: M{active.Id}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 47f, panel.width - 24f, 18f), $"Coordinates: Y {active.Y:0}, X {active.X:0}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 65f, panel.width - 24f, 18f), $"Grid square: {GridSquare(active.X, active.Y)}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 83f, panel.width - 24f, 18f), $"Nearest tower: {nearest.Name}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 101f, panel.width - 24f, 18f), $"Distance: {distance:0} units · {direction} ({degrees:0}°)", markerPanelValueStyle);
-        }
-        else
-        {
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 42f, panel.width - 24f, 20f), "Click a marker to select it", markerPanelValueStyle);
-        }
-
-        GUI.enabled = active != null;
-        if (GUI.Button(new Rect(panel.x + 12f, panel.y + 137f, 118f, 26f), "REMOVE ACTIVE"))
-            RemoveActiveMarker();
-        GUI.enabled = true;
-
-        if (GUI.Button(new Rect(panel.x + 138f, panel.y + 137f, 126f, 26f), "CLEAR ALL"))
-            ClearAllMarkers();
-    }
-
-    private static void DrawInfoPanelBackground(Rect panel)
-    {
-        Color oldBackground = GUI.backgroundColor;
-        GUI.backgroundColor = new Color(0.055f, 0.065f, 0.085f, 0.97f);
-        GUI.Box(panel, GUIContent.none);
-        GUI.backgroundColor = oldBackground;
     }
 
     private void DrawRuler(Rect mapRect)
@@ -712,8 +837,7 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.Label(glyphRect, "●", rulerPointStyle);
         GUI.color = oldColor;
 
-        Rect labelRect = new Rect(point.x + 12f, point.y - 10f, 28f, 20f);
-        GUI.Label(labelRect, label, rulerLabelStyle);
+        GUI.Label(new Rect(point.x + 12f, point.y - 10f, 28f, 20f), label, rulerLabelStyle);
     }
 
     private static void DrawSafeSegmentedLine(Vector2 start, Vector2 end, Color color, float width)
@@ -737,54 +861,19 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.color = oldColor;
     }
 
-    private void DrawRulerPanel(float viewportWidth, float panelWidth, float panelY, float panelHeight)
-    {
-        Rect panel = new Rect(viewportWidth - panelWidth - 10f, panelY, panelWidth, panelHeight);
-        DrawInfoPanelBackground(panel);
-        GUI.Label(new Rect(panel.x + 12f, panel.y + 8f, panel.width - 24f, 20f), "DISTANCE + BEARING", markerPanelTitleStyle);
-
-        if (!hasRulerA)
-        {
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 36f, panel.width - 24f, 38f), "RULER mode: click point A, then point B.", markerPanelValueStyle);
-        }
-        else if (!hasRulerB)
-        {
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 32f, panel.width - 24f, 18f), $"Point A: Y {rulerA.y:0}, X {rulerA.x:0}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 54f, panel.width - 24f, 18f), "Click point B to measure.", markerPanelValueStyle);
-        }
-        else
-        {
-            float distance = Vector2.Distance(rulerA, rulerB);
-            BearingInfo(rulerA.x, rulerA.y, rulerB.x, rulerB.y, out float degrees, out string direction);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 29f, panel.width - 24f, 18f), $"Point A: Y {rulerA.y:0}, X {rulerA.x:0}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 47f, panel.width - 24f, 18f), $"Point B: Y {rulerB.y:0}, X {rulerB.x:0}", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 65f, panel.width - 24f, 18f), $"Distance: {distance:0} units", markerPanelValueStyle);
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 83f, panel.width - 24f, 18f), $"Bearing A → B: {direction} ({degrees:0}°)", markerPanelValueStyle);
-        }
-
-        GUI.enabled = hasRulerA;
-        if (GUI.Button(new Rect(panel.x + 12f, panel.y + 111f, panel.width - 24f, 26f), "CLEAR RULER"))
-            ClearRuler();
-        GUI.enabled = true;
-    }
-
     private void DrawCoordinateTip(Vector2 localMouse, Rect mapRect, float viewportWidth, float viewportHeight)
     {
         if (!mapRect.Contains(localMouse))
             return;
 
         Vector2 game = OverlayPointToGame(mapRect, localMouse);
-
         const float width = 154f;
         const float height = 28f;
         float tipX = Mathf.Clamp(localMouse.x + 14f, 4f, Mathf.Max(4f, viewportWidth - width - 4f));
         float tipY = Mathf.Clamp(localMouse.y + 14f, 4f, Mathf.Max(4f, viewportHeight - height - 4f));
         Rect tip = new Rect(tipX, tipY, width, height);
 
-        Color oldBackground = GUI.backgroundColor;
-        GUI.backgroundColor = new Color(0.03f, 0.04f, 0.055f, 0.96f);
-        GUI.Box(tip, GUIContent.none);
-        GUI.backgroundColor = oldBackground;
+        DrawPanelRect(tip, new Color(0.03f, 0.04f, 0.055f, 0.96f), BorderColor);
         GUI.Label(tip, $"Y {game.y:0}, X {game.x:0}", coordinateStyle);
     }
 
@@ -818,7 +907,7 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.color = oldColor;
     }
 
-    private void HandleMapInput(Rect viewport, Rect controlRectGlobal, Rect playerPanelGlobal, Rect markerPanelGlobal, Rect rulerPanelGlobal, Rect mapRect)
+    private void HandleMapInput(Rect viewport, Rect toolDockGlobal, Rect displayDockGlobal, Rect actionDockGlobal, Rect sidePanelGlobal, Rect mapRect)
     {
         Event evt = Event.current;
         if (evt == null || evt.type == EventType.Used)
@@ -826,10 +915,10 @@ public class HideSeekOverlay : MonoBehaviour
 
         Vector2 mouse = evt.mousePosition;
         if (!viewport.Contains(mouse)
-            || controlRectGlobal.Contains(mouse)
-            || playerPanelGlobal.Contains(mouse)
-            || markerPanelGlobal.Contains(mouse)
-            || rulerPanelGlobal.Contains(mouse))
+            || toolDockGlobal.Contains(mouse)
+            || displayDockGlobal.Contains(mouse)
+            || actionDockGlobal.Contains(mouse)
+            || sidePanelGlobal.Contains(mouse))
             return;
 
         Vector2 localMouse = new Vector2(mouse.x - viewport.x, mouse.y - viewport.y);
@@ -1049,78 +1138,109 @@ public class HideSeekOverlay : MonoBehaviour
 
     private void EnsureStyles()
     {
-        if (titleStyle != null)
+        if (brandStyle != null)
             return;
 
-        titleStyle = new GUIStyle(GUI.skin.label)
+        brandStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 25,
+            fontSize = 18,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.95f, 0.66f, 0.08f) }
+            normal = { textColor = Color.white }
         };
 
-        subtitleStyle = new GUIStyle(GUI.skin.label)
+        versionStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 11,
+            fontSize = 10,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.58f, 0.65f, 0.74f) }
+            normal = { textColor = MutedText }
         };
 
         statusStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 14,
+            fontSize = 13,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleRight,
-            normal = { textColor = new Color(0.74f, 0.92f, 1f) }
+            normal = { textColor = AccentCyan }
         };
 
         hintStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 12,
+            fontSize = 11,
             alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.72f, 0.77f, 0.84f) }
+            normal = { textColor = MutedText }
         };
 
-        markerShadowStyle = new GUIStyle(GUI.skin.label)
+        dockLabelStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 39,
+            fontSize = 9,
             fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = new Color(0.01f, 0.015f, 0.02f, 0.98f) }
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = new Color(0.62f, 0.67f, 0.73f, 1f) }
         };
 
-        markerOuterStyle = new GUIStyle(GUI.skin.label)
+        compactButtonStyle = new GUIStyle(GUI.skin.button)
         {
-            fontSize = 36,
+            fontSize = 10,
             fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
+            alignment = TextAnchor.MiddleCenter
+        };
+        compactButtonStyle.normal.textColor = new Color(0.94f, 0.96f, 0.98f, 1f);
+        compactButtonStyle.hover.textColor = Color.white;
+        compactButtonStyle.active.textColor = Color.white;
+        compactButtonStyle.focused.textColor = Color.white;
+
+        panelHeadingStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 16,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
             normal = { textColor = Color.white }
         };
 
-        markerStyle = new GUIStyle(GUI.skin.label)
+        panelSubtitleStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 29,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = new Color(0.14f, 0.82f, 1f) }
+            fontSize = 11,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = MutedText }
         };
 
-        markerCoreStyle = new GUIStyle(GUI.skin.label)
+        cardHeadingStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 12,
             fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = Color.white }
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = AccentYellow }
         };
 
-        youLabelStyle = new GUIStyle(GUI.skin.label)
+        liveCardHeadingStyle = new GUIStyle(cardHeadingStyle);
+        liveCardHeadingStyle.normal.textColor = AccentCyan;
+
+        markerCardHeadingStyle = new GUIStyle(cardHeadingStyle);
+        markerCardHeadingStyle.normal.textColor = AccentYellow;
+
+        metricLabelStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 13,
+            fontSize = 11,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.45f, 0.9f, 1f) }
+            normal = { textColor = new Color(0.82f, 0.85f, 0.89f, 1f) }
+        };
+
+        metricValueStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11,
+            alignment = TextAnchor.MiddleRight,
+            normal = { textColor = new Color(0.93f, 0.95f, 0.97f, 1f) }
+        };
+
+        emptyStateStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 11,
+            wordWrap = true,
+            alignment = TextAnchor.UpperLeft,
+            normal = { textColor = MutedText }
         };
 
         mapMessageStyle = new GUIStyle(GUI.skin.label)
@@ -1195,27 +1315,44 @@ public class HideSeekOverlay : MonoBehaviour
             normal = { textColor = new Color(1f, 0.84f, 0.38f, 1f) }
         };
 
-        markerPanelTitleStyle = new GUIStyle(GUI.skin.label)
+        markerShadowStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 39,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = new Color(0.01f, 0.015f, 0.02f, 0.98f) }
+        };
+
+        markerOuterStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 36,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
+
+        markerStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 29,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = AccentCyan }
+        };
+
+        markerCoreStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 12,
             fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(1f, 0.76f, 0.18f, 1f) }
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
         };
 
-        markerPanelValueStyle = new GUIStyle(GUI.skin.label)
+        youLabelStyle = new GUIStyle(GUI.skin.label)
         {
-            fontSize = 12,
-            alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.9f, 0.93f, 0.97f) }
-        };
-
-        livePanelTitleStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 12,
+            fontSize = 13,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleLeft,
-            normal = { textColor = new Color(0.38f, 0.87f, 1f) }
+            normal = { textColor = new Color(0.45f, 0.9f, 1f) }
         };
 
         rulerPointOutlineStyle = new GUIStyle(GUI.skin.label)
