@@ -16,7 +16,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.20 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.21 configured.");
     }
 }
 
@@ -185,12 +185,6 @@ public class HideSeekOverlay : MonoBehaviour
         EnsureInitialized();
         UpdateMatchTimer();
 
-        // Texture creation/loading belongs in the normal Unity update loop.
-        // 0.0.19 attempted this from OnGUI for the passive mini-map, which can
-        // leave the one-shot loader stuck before the texture becomes usable.
-        if (overlayOpen || settings.MiniMapEnabled)
-            EnsureMapTexture();
-
         bool needsPosition = overlayOpen
             || missionActive
             || settings.MiniMapEnabled
@@ -198,6 +192,14 @@ public class HideSeekOverlay : MonoBehaviour
             || settings.MissionHudEnabled;
         if (needsPosition)
             UpdatePlayerPosition();
+
+        // Do not construct the large Unity Texture2D during the bootstrap/title
+        // scene. 0.0.20's log proved the resource itself loaded correctly, but
+        // it was created roughly 20 seconds before WorldScene and PlayerCharacter
+        // existed. Wait for the real local player, matching the proven 0.0.18
+        // timing, then load once the game world is actually alive.
+        if (hasPlayerPosition && (overlayOpen || settings.MiniMapEnabled))
+            EnsureMapTexture();
 
         UpdateMissionProgress();
         UpdateGameplayNotifications();
@@ -228,7 +230,8 @@ public class HideSeekOverlay : MonoBehaviour
 
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
-        EnsureMapTexture();
+        if (hasPlayerPosition)
+            EnsureMapTexture();
     }
 
     private void UpdateMatchTimer()
@@ -307,8 +310,9 @@ public class HideSeekOverlay : MonoBehaviour
             EnterOverlayInputMode();
             Cursor.visible = true;
             Cursor.lockState = CursorLockMode.None;
-            EnsureMapTexture();
             UpdatePlayerPosition();
+            if (hasPlayerPosition)
+                EnsureMapTexture();
             CoreEntry.Logger?.LogInfo("Hide + Seek overlay opened; ControlsManager menu mode enabled.");
         }
         else
@@ -374,7 +378,7 @@ public class HideSeekOverlay : MonoBehaviour
             }
 
             if (stream == null)
-                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.20.");
+                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.21.");
 
             using (stream)
             using (var memory = new MemoryStream())
@@ -574,7 +578,9 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawMiniMapPlaceholder(Rect rect)
     {
         DrawPanelRect(rect, new Color(0.045f, 0.055f, 0.07f, 0.94f), BorderColor);
-        string title = mapLoadAttempted ? "MAP RETRYING…" : "MAP LOADING…";
+        string title = !hasPlayerPosition
+            ? "WAITING FOR WORLD…"
+            : (mapLoadAttempted ? "MAP RETRYING…" : "MAP LOADING…");
         GUI.Label(new Rect(rect.x + 8f, rect.y + 49f, rect.width - 16f, 24f), title, statusStyle);
 
         if (!string.IsNullOrEmpty(mapLoadError))
@@ -691,7 +697,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.20", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.21", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
