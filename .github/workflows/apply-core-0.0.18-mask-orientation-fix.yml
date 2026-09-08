@@ -18,6 +18,9 @@ jobs:
           ref: mod-prototype
           fetch-depth: 0
 
+      - name: Fix patch targeting
+        run: python dev-tools/fix_core_0_0_19_patch.py
+
       - name: Patch Core source
         run: python dev-tools/apply_core_0_0_19_foundation.py
 
