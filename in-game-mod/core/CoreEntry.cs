@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text.Json;
 using BepInEx.Logging;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
@@ -15,7 +16,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.18 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.19 configured.");
     }
 }
 
@@ -26,12 +27,10 @@ public class HideSeekOverlay : MonoBehaviour
     private const float TopBarHeight = 58f;
     private const float UiMargin = 14f;
     private const float SidePanelWidth = 390f;
-    private const int PointsPerMinute = 1;
-    private const float QuestionCooldownSeconds = 300f;
-    private const float CenterlineUnlockSeconds = 600f;
-    private const float NearestTowerUnlockSeconds = 1200f;
-    private const float TowerRadiusUnlockSeconds = 1800f;
-    private const float MissionTargetDistance = 200f;
+    private const float MiniMapWidth = 210f;
+    private const float MiniMapHeight = 164f;
+    private const float NavHudWidth = 176f;
+    private const float PassiveHudMargin = 14f;
 
     private const double MapA = 1.01872096;
     private const double MapB = 0.00000814424539;
@@ -85,6 +84,21 @@ public class HideSeekOverlay : MonoBehaviour
     private bool hasPlayerPosition;
     private float gameX;
     private float gameY;
+    private float playerHeadingDegrees;
+    private string playerHeadingDirection = "N";
+
+    private LocalSettings settings = new LocalSettings();
+    private string settingsPath = string.Empty;
+    private bool initialized;
+
+    private readonly List<UiNotification> notifications = new List<UiNotification>();
+    private AudioSource uiAudioSource;
+    private AudioClip softToneClip;
+    private AudioClip normalToneClip;
+    private AudioClip importantToneClip;
+    private bool previousCooldownActive;
+    private bool previousCanAffordNearest;
+    private bool previousCanAffordRadius;
 
     private float zoom = 1f;
     private Vector2 pan = Vector2.zero;
@@ -115,6 +129,7 @@ public class HideSeekOverlay : MonoBehaviour
 
     private bool centerlineVertical;
     private int centerlineAnswerIndex;
+    private int centerlineUses;
     private int nearestTowerAnswerIndex;
     private int towerRadiusTowerIndex;
     private int towerRadiusOptionIndex;
@@ -166,17 +181,32 @@ public class HideSeekOverlay : MonoBehaviour
 
     public void Update()
     {
+        EnsureInitialized();
         UpdateMatchTimer();
 
-        bool needsPosition = overlayOpen || missionActive;
+        bool needsPosition = overlayOpen
+            || missionActive
+            || settings.MiniMapEnabled
+            || settings.NavHudEnabled
+            || settings.MissionHudEnabled;
         if (needsPosition)
             UpdatePlayerPosition();
 
         UpdateMissionProgress();
+        UpdateGameplayNotifications();
 
-        if (Input.GetKeyDown(KeyCode.F7))
+        if (Input.GetKeyDown(KeyCode.M) || Input.GetKeyDown(KeyCode.F7))
         {
             SetOverlayOpen(!overlayOpen);
+            return;
+        }
+
+        if (selectedRole == PlayerRole.Hider
+            && missionActive
+            && missionReady
+            && Input.GetKeyDown(KeyCode.R))
+        {
+            CompleteMovementMission();
             return;
         }
 
@@ -213,15 +243,23 @@ public class HideSeekOverlay : MonoBehaviour
 
     private void StartOrResumeMatch()
     {
+        bool resuming = matchElapsedSeconds > 0.01f;
         matchLastTick = Time.unscaledTime;
         matchRunning = true;
-        CoreEntry.Logger?.LogInfo(matchElapsedSeconds <= 0.01f ? "Hide + Seek match started." : "Hide + Seek match resumed.");
+        Notify(resuming ? "MATCH RESUMED" : "MATCH STARTED",
+            resuming ? $"Timer resumed at {FormatTime(matchElapsedSeconds)}." : "The Hide + Seek timer is running.",
+            AccentGreen, resuming ? NotificationTone.Normal : NotificationTone.Important);
+        CoreEntry.Logger?.LogInfo(resuming ? "Hide + Seek match resumed." : "Hide + Seek match started.");
     }
 
     private void PauseMatch()
     {
+        if (!matchRunning)
+            return;
+
         UpdateMatchTimer();
         matchRunning = false;
+        Notify("MATCH PAUSED", $"Timer paused at {FormatTime(matchElapsedSeconds)}.", AccentYellow, NotificationTone.Normal);
         CoreEntry.Logger?.LogInfo("Hide + Seek match paused.");
     }
 
@@ -232,6 +270,7 @@ public class HideSeekOverlay : MonoBehaviour
         matchLastTick = Time.unscaledTime;
         seekerPointsSpent = 0;
         questionCooldownUntil = 0f;
+        centerlineUses = 0;
         questionHistory.Clear();
         constraints.Clear();
         constraintMaskDirty = true;
@@ -240,6 +279,10 @@ public class HideSeekOverlay : MonoBehaviour
         missionReady = false;
         missionDistance = 0f;
         missionStart = Vector2.zero;
+        previousCooldownActive = false;
+        previousCanAffordNearest = false;
+        previousCanAffordRadius = false;
+        Notify("MATCH RESET", "Timer, points, questions, constraints, and mission state were reset.", AccentYellow, NotificationTone.Important);
         CoreEntry.Logger?.LogInfo("Hide + Seek gameplay state reset.");
     }
 
@@ -368,6 +411,11 @@ public class HideSeekOverlay : MonoBehaviour
         {
             Vector3 p = playerRb.position;
             UnityToBigWalk(p.x, p.z, out gameX, out gameY);
+
+            Vector3 forward = playerRb.transform.forward;
+            UnityToBigWalk(p.x + forward.x * 10f, p.z + forward.z * 10f, out float headingX, out float headingY);
+            BearingInfo(gameX, gameY, headingX, headingY, out playerHeadingDegrees, out playerHeadingDirection);
+
             hasPlayerPosition = true;
         }
         catch
@@ -427,15 +475,29 @@ public class HideSeekOverlay : MonoBehaviour
 
     public void OnGUI()
     {
-        if (!overlayOpen)
-            return;
-
+        EnsureInitialized();
         EnsureStyles();
-        EnsureMapTexture();
         GUI.depth = -10000;
 
         Color oldColor = GUI.color;
         Color oldBackground = GUI.backgroundColor;
+
+        if (!overlayOpen)
+        {
+            if (settings.MiniMapEnabled || settings.NavHudEnabled || (settings.MissionHudEnabled && missionActive))
+            {
+                if (settings.MiniMapEnabled)
+                    EnsureMapTexture();
+                DrawPassiveHud();
+            }
+
+            DrawNotifications();
+            GUI.color = oldColor;
+            GUI.backgroundColor = oldBackground;
+            return;
+        }
+
+        EnsureMapTexture();
 
         GUI.color = PageBackground;
         GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
@@ -444,6 +506,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawTopBar();
         Rect viewport = new Rect(0f, TopBarHeight, Screen.width, Mathf.Max(100f, Screen.height - TopBarHeight));
         DrawMap(viewport);
+        DrawNotifications();
 
         GUI.color = oldColor;
         GUI.backgroundColor = oldBackground;
@@ -453,29 +516,152 @@ public class HideSeekOverlay : MonoBehaviour
             evt.Use();
     }
 
+    private void DrawPassiveHud()
+    {
+        if (settings.MissionHudEnabled && selectedRole == PlayerRole.Hider && missionActive)
+            DrawMissionHud(new Rect(PassiveHudMargin, PassiveHudMargin, 286f, missionReady ? 112f : 100f));
+
+        float mapX = Screen.width - PassiveHudMargin - MiniMapWidth;
+        Rect miniMapRect = new Rect(mapX, PassiveHudMargin, MiniMapWidth, MiniMapHeight);
+
+        if (settings.MiniMapEnabled && mapTexture != null)
+            DrawMiniMap(miniMapRect);
+
+        if (settings.NavHudEnabled)
+        {
+            float navX = settings.MiniMapEnabled
+                ? miniMapRect.x - 8f - NavHudWidth
+                : Screen.width - PassiveHudMargin - NavHudWidth;
+            DrawNavHud(new Rect(navX, PassiveHudMargin, NavHudWidth, MiniMapHeight));
+        }
+    }
+
+    private void DrawMiniMap(Rect rect)
+    {
+        DrawPanelRect(rect, new Color(0.045f, 0.055f, 0.07f, 0.94f), BorderColor);
+        Rect map = new Rect(rect.x + 5f, rect.y + 5f, rect.width - 10f, rect.height - 10f);
+
+        if (!hasPlayerPosition)
+        {
+            GUI.Label(map, "LOCATING PLAYER…", statusStyle);
+            return;
+        }
+
+        Vector2 centerPixel = GameToMapPixel(gameX, gameY);
+        float sourceWidth = 620f;
+        float sourceHeight = sourceWidth * (map.height / map.width);
+        sourceWidth = Mathf.Min(sourceWidth, mapTexture.width);
+        sourceHeight = Mathf.Min(sourceHeight, mapTexture.height);
+
+        float sourceX = Mathf.Clamp(centerPixel.x - sourceWidth * 0.5f, 0f, Mathf.Max(0f, mapTexture.width - sourceWidth));
+        float sourceY = Mathf.Clamp(centerPixel.y - sourceHeight * 0.5f, 0f, Mathf.Max(0f, mapTexture.height - sourceHeight));
+
+        Rect uv = new Rect(
+            sourceX / mapTexture.width,
+            1f - ((sourceY + sourceHeight) / mapTexture.height),
+            sourceWidth / mapTexture.width,
+            sourceHeight / mapTexture.height);
+
+        GUI.DrawTextureWithTexCoords(map, mapTexture, uv, false);
+
+        foreach (MapFeature tower in Towers)
+        {
+            Vector2 towerPixel = GameToMapPixel(tower.X, tower.Y);
+            if (towerPixel.x < sourceX || towerPixel.x > sourceX + sourceWidth
+                || towerPixel.y < sourceY || towerPixel.y > sourceY + sourceHeight)
+                continue;
+
+            float tx = map.x + ((towerPixel.x - sourceX) / sourceWidth) * map.width;
+            float ty = map.y + ((towerPixel.y - sourceY) / sourceHeight) * map.height;
+            DrawSolidRect(new Rect(tx - 3f, ty - 3f, 6f, 6f), tower.Color);
+        }
+
+        float px = map.x + ((centerPixel.x - sourceX) / sourceWidth) * map.width;
+        float py = map.y + ((centerPixel.y - sourceY) / sourceHeight) * map.height;
+        DrawSolidRect(new Rect(px - 5f, py - 5f, 10f, 10f), Color.white);
+        DrawSolidRect(new Rect(px - 3f, py - 3f, 6f, 6f), AccentCyan);
+
+        Rect north = new Rect(map.x + map.width * 0.5f - 14f, map.y + 3f, 28f, 18f);
+        DrawPanelRect(north, new Color(0.03f, 0.04f, 0.055f, 0.82f), new Color(1f, 1f, 1f, 0.12f));
+        GUI.Label(north, "N", statusStyle);
+    }
+
+    private void DrawNavHud(Rect rect)
+    {
+        DrawPanelRect(rect, new Color(0.055f, 0.068f, 0.088f, 0.94f), BorderColor);
+        GUI.Label(new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, 18f), "NAVIGATION", liveCardHeadingStyle);
+
+        if (!hasPlayerPosition)
+        {
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 38f, rect.width - 20f, 50f), "Searching for PlayerCharacter…", emptyStateStyle);
+            return;
+        }
+
+        MapFeature nearest = NearestTowerAt(gameX, gameY, out float distance);
+
+        GUI.Label(new Rect(rect.x + 10f, rect.y + 32f, rect.width - 20f, 18f), $"Y {gameY:0}  X {gameX:0}", metricValueStyle);
+        GUI.Label(new Rect(rect.x + 10f, rect.y + 52f, rect.width - 20f, 17f), GridSquare(gameX, gameY), hintStyle);
+
+        DrawPanelRect(new Rect(rect.x + 10f, rect.y + 76f, rect.width - 20f, 42f),
+            new Color(0.04f, 0.055f, 0.07f, 0.96f), new Color(AccentCyan.r * 0.5f, AccentCyan.g * 0.5f, AccentCyan.b * 0.5f, 1f));
+        GUI.Label(new Rect(rect.x + 14f, rect.y + 79f, rect.width - 28f, 16f), "COMPASS", dockLabelStyle);
+        GUI.Label(new Rect(rect.x + 14f, rect.y + 94f, rect.width - 28f, 22f),
+            $"{playerHeadingDirection} · {playerHeadingDegrees:000}°", statusStyle);
+
+        GUI.Label(new Rect(rect.x + 10f, rect.y + 126f, rect.width - 20f, 16f), $"Nearest: {nearest.Name}", hintStyle);
+        GUI.Label(new Rect(rect.x + 10f, rect.y + 143f, rect.width - 20f, 16f), $"{distance:0} units away", hintStyle);
+    }
+
+    private void DrawMissionHud(Rect rect)
+    {
+        Color border = missionReady ? AccentGreen : AccentPurple;
+        DrawPanelRect(rect, new Color(0.095f, 0.065f, 0.13f, 0.95f), border);
+        GUI.Label(new Rect(rect.x + 12f, rect.y + 8f, rect.width - 24f, 18f), missionReady ? "MISSION READY" : "HIDER MISSION", missionCardHeadingStyle);
+
+        if (missionReady)
+        {
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 34f, rect.width - 24f, 22f), "Movement requirement complete.", statusStyle);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 66f, rect.width - 24f, 30f), "PRESS R WHEN READY", statusStyle);
+            return;
+        }
+
+        float target = Mathf.Max(1f, settings.MissionTargetDistance);
+        float progress = Mathf.Clamp01(missionDistance / target);
+        GUI.Label(new Rect(rect.x + 12f, rect.y + 33f, rect.width - 24f, 20f),
+            $"Move {settings.MissionTargetDistance:0} units · {missionDistance:0}/{settings.MissionTargetDistance:0}", hintStyle);
+
+        Rect bar = new Rect(rect.x + 12f, rect.y + 62f, rect.width - 24f, 12f);
+        DrawSolidRect(bar, new Color(0.04f, 0.05f, 0.07f, 1f));
+        DrawSolidRect(new Rect(bar.x, bar.y, bar.width * progress, bar.height), AccentPurple);
+        GUI.Label(new Rect(rect.x + 12f, rect.y + 78f, rect.width - 24f, 16f),
+            $"{Mathf.Max(0f, settings.MissionTargetDistance - missionDistance):0} units remaining", hintStyle);
+    }
+
     private void DrawTopBar()
     {
         DrawSolidRect(new Rect(0f, 0f, Screen.width, TopBarHeight), TopBarBackground);
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.18", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.19", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
-        DrawTopTab(ref tabX, "QUESTIONS", UiTab.Questions, 88f);
+        if (selectedRole == PlayerRole.Seeker)
+            DrawTopTab(ref tabX, "QUESTIONS", UiTab.Questions, 88f);
         DrawTopTab(ref tabX, "MAP", UiTab.Map, 58f);
         DrawTopTab(ref tabX, "MORE", UiTab.More, 60f);
 
-        float economyX = tabX + 12f;
-        string economy = selectedRole == PlayerRole.Seeker
-            ? $"{SeekerPointsBalance()} SP · +{PointsPerMinute}/min"
-            : missionActive ? $"MISSION · {missionDistance:0}/{MissionTargetDistance:0}" : "HIDER";
-        Color economyColor = selectedRole == PlayerRole.Seeker ? AccentYellow : AccentPurple;
-        DrawTopChip(new Rect(economyX, 15f, 150f, 28f), economy, economyColor);
+        float chipX = tabX + 12f;
+        if (selectedRole == PlayerRole.Seeker)
+        {
+            DrawTopChip(new Rect(chipX, 15f, 150f, 28f),
+                $"{SeekerPointsBalance()} SP · +{settings.PointsPerMinute}/min", AccentYellow);
+            chipX += 158f;
+        }
 
-        float roleX = economyX + 158f;
-        DrawTopChip(new Rect(roleX, 15f, 86f, 28f), selectedRole == PlayerRole.Seeker ? "SEEKER" : "HIDER",
+        DrawTopChip(new Rect(chipX, 15f, 86f, 28f),
+            selectedRole == PlayerRole.Seeker ? "SEEKER" : "HIDER",
             selectedRole == PlayerRole.Seeker ? AccentBlue : AccentPurple);
 
         float closeX = Screen.width - 90f;
@@ -639,17 +825,22 @@ public class HideSeekOverlay : MonoBehaviour
         DrawRoleCard(roleCard);
         y += roleCard.height + 10f;
 
-        Rect matchCard = new Rect(cardX, y, cardWidth, 122f);
+        Rect matchCard = new Rect(cardX, y, cardWidth, 100f);
         DrawMatchCard(matchCard);
         y += matchCard.height + 10f;
 
-        Rect missionCard = new Rect(cardX, y, cardWidth, 174f);
-        DrawMissionCard(missionCard);
+        if (selectedRole == PlayerRole.Hider)
+        {
+            Rect missionCard = new Rect(cardX, y, cardWidth, 174f);
+            DrawMissionCard(missionCard);
+        }
     }
 
     private void DrawCurrentObjectiveCard(Rect card)
     {
-        Color border = selectedRole == PlayerRole.Hider ? new Color(0.43f, 0.31f, 0.49f, 1f) : new Color(0.31f, 0.40f, 0.50f, 1f);
+        Color border = selectedRole == PlayerRole.Hider
+            ? new Color(0.43f, 0.31f, 0.49f, 1f)
+            : new Color(0.31f, 0.40f, 0.50f, 1f);
         DrawPanelRect(card, new Color(0.10f, 0.13f, 0.17f, 0.98f), border);
         GUI.Label(new Rect(card.x + 13f, card.y + 8f, card.width - 26f, 16f), "CURRENT STATUS", objectiveEyebrowStyle);
 
@@ -658,19 +849,21 @@ public class HideSeekOverlay : MonoBehaviour
         if (!matchRunning && matchElapsedSeconds <= 0.01f)
         {
             title = "Waiting to start";
-            detail = "Choose a role, then start the match from the top bar.";
+            detail = selectedRole == PlayerRole.Seeker
+                ? "Start the timer once the Hider confirms they have found their spot."
+                : "Find your hiding spot, then tell the Seeker when you are ready.";
         }
         else if (selectedRole == PlayerRole.Hider && missionActive)
         {
-            title = missionReady ? "Mission target reached" : "Move 200 units";
+            title = missionReady ? "Mission target reached" : $"Move {settings.MissionTargetDistance:0} units";
             detail = missionReady
-                ? "READY is now available in the mission card."
-                : $"Travel {Mathf.Max(0f, MissionTargetDistance - missionDistance):0} more units from your mission start.";
+                ? "Press R whenever you are ready to complete the mission."
+                : $"Travel {Mathf.Max(0f, settings.MissionTargetDistance - missionDistance):0} more units from your mission start.";
         }
         else if (selectedRole == PlayerRole.Hider)
         {
             title = "Stay hidden";
-            detail = "No movement objective is active. Trigger the test mission when you want one.";
+            detail = "No movement objective is active. The current test mission can be triggered below.";
         }
         else
         {
@@ -691,9 +884,22 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.Label(new Rect(card.x + 12f, card.y + 29f, card.width - 24f, 18f), "Local role selection for this client", panelSubtitleStyle);
 
         if (DrawRoleButton(new Rect(card.x + 12f, card.y + 55f, (card.width - 30f) * 0.5f, 37f), "SEEKER", PlayerRole.Seeker))
-            selectedRole = PlayerRole.Seeker;
+            SetRole(PlayerRole.Seeker);
         if (DrawRoleButton(new Rect(card.x + 18f + (card.width - 30f) * 0.5f, card.y + 55f, (card.width - 30f) * 0.5f, 37f), "HIDER", PlayerRole.Hider))
-            selectedRole = PlayerRole.Hider;
+            SetRole(PlayerRole.Hider);
+    }
+
+    private void SetRole(PlayerRole role)
+    {
+        if (selectedRole == role)
+            return;
+
+        selectedRole = role;
+        if (selectedRole == PlayerRole.Hider && activeTab == UiTab.Questions)
+            activeTab = UiTab.Game;
+
+        previousCanAffordNearest = false;
+        previousCanAffordRadius = false;
     }
 
     private bool DrawRoleButton(Rect rect, string label, PlayerRole role)
@@ -701,7 +907,9 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldBackground = GUI.backgroundColor;
         bool active = selectedRole == role;
         Color accent = role == PlayerRole.Seeker ? AccentBlue : AccentPurple;
-        GUI.backgroundColor = active ? new Color(accent.r * 0.38f, accent.g * 0.38f, accent.b * 0.38f, 1f) : new Color(0.12f, 0.14f, 0.17f, 1f);
+        GUI.backgroundColor = active
+            ? new Color(accent.r * 0.38f, accent.g * 0.38f, accent.b * 0.38f, 1f)
+            : new Color(0.12f, 0.14f, 0.17f, 1f);
         bool clicked = GUI.Button(rect, label, compactButtonStyle);
         if (active)
             DrawSolidRect(new Rect(rect.x + 8f, rect.yMax - 2f, rect.width - 16f, 2f), accent);
@@ -716,53 +924,46 @@ public class HideSeekOverlay : MonoBehaviour
         float y = card.y + 31f;
         DrawMetricRow(card, y, "Elapsed", FormatTime(matchElapsedSeconds)); y += 22f;
         DrawMetricRow(card, y, "State", matchRunning ? "Running" : (matchElapsedSeconds > 0f ? "Paused" : "Not started")); y += 22f;
-        DrawMetricRow(card, y, "Role", selectedRole == PlayerRole.Seeker ? "Seeker" : "Hider"); y += 22f;
-        DrawMetricRow(card, y, "Native tracking", hasPlayerPosition ? "Connected" : "Searching");
+        DrawMetricRow(card, y, "Role", selectedRole == PlayerRole.Seeker ? "Seeker" : "Hider");
     }
 
     private void DrawMissionCard(Rect card)
     {
-        Color bg = selectedRole == PlayerRole.Hider && missionActive
+        Color bg = missionActive
             ? new Color(0.15f, 0.105f, 0.21f, 0.98f)
             : CardBackground;
-        Color border = selectedRole == PlayerRole.Hider && missionActive
+        Color border = missionActive
             ? new Color(0.50f, 0.35f, 0.75f, 1f)
             : BorderColor;
         DrawPanelRect(card, bg, border);
-        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "HIDER MISSION · MANUAL TEST", missionCardHeadingStyle);
-
-        if (selectedRole != PlayerRole.Hider)
-        {
-            GUI.Label(new Rect(card.x + 12f, card.y + 39f, card.width - 24f, 62f), "Switch to HIDER to test the first movement mission.", emptyStateStyle);
-            return;
-        }
+        GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 24f, 20f), "HIDER MISSION", missionCardHeadingStyle);
 
         if (!missionActive)
         {
             string message = missionCompleted
                 ? "Mission complete. Trigger it again whenever you want to retest."
-                : "Start at your current location, then move 200 map units away.";
+                : $"Start here, then move {settings.MissionTargetDistance:0} map units away.";
             GUI.Label(new Rect(card.x + 12f, card.y + 35f, card.width - 24f, 48f), message, emptyStateStyle);
 
             GUI.enabled = hasPlayerPosition;
             Color oldBackground = GUI.backgroundColor;
             GUI.backgroundColor = new Color(0.30f, 0.20f, 0.43f, 1f);
-            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, card.width - 24f, 38f), "START 200-UNIT MISSION", compactButtonStyle))
+            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, card.width - 24f, 38f), "START MOVEMENT MISSION", compactButtonStyle))
                 StartMovementMission();
             GUI.backgroundColor = oldBackground;
             GUI.enabled = true;
             return;
         }
 
-        DrawMetricRow(card, card.y + 33f, "Progress", $"{missionDistance:0} / {MissionTargetDistance:0} units");
-        DrawMetricRow(card, card.y + 55f, "Remaining", $"{Mathf.Max(0f, MissionTargetDistance - missionDistance):0} units");
-        DrawMetricRow(card, card.y + 77f, "Status", missionReady ? "Target reached" : "Keep moving");
+        DrawMetricRow(card, card.y + 33f, "Progress", $"{missionDistance:0} / {settings.MissionTargetDistance:0} units");
+        DrawMetricRow(card, card.y + 55f, "Remaining", $"{Mathf.Max(0f, settings.MissionTargetDistance - missionDistance):0} units");
+        DrawMetricRow(card, card.y + 77f, "Status", missionReady ? "Press R when ready" : "Keep moving");
 
         Color oldBg = GUI.backgroundColor;
         if (missionReady)
         {
             GUI.backgroundColor = new Color(0.20f, 0.43f, 0.29f, 1f);
-            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, 154f, 38f), "READY", compactButtonStyle))
+            if (GUI.Button(new Rect(card.x + 12f, card.y + 122f, 154f, 38f), "READY · R", compactButtonStyle))
                 CompleteMovementMission();
             GUI.backgroundColor = new Color(0.28f, 0.13f, 0.15f, 1f);
             if (GUI.Button(new Rect(card.x + card.width - 116f, card.y + 122f, 104f, 38f), "CANCEL", compactButtonStyle))
@@ -787,7 +988,8 @@ public class HideSeekOverlay : MonoBehaviour
         missionReady = false;
         missionCompleted = false;
         missionActive = true;
-        CoreEntry.Logger?.LogInfo($"Movement mission started at Y {gameY:0}, X {gameX:0}. Target: {MissionTargetDistance:0} units.");
+        Notify("NEW MISSION", $"Move {settings.MissionTargetDistance:0} units from your starting position.", AccentPurple, NotificationTone.Important, PlayerRole.Hider);
+        CoreEntry.Logger?.LogInfo($"Movement mission started at Y {gameY:0}, X {gameX:0}. Target: {settings.MissionTargetDistance:0} units.");
     }
 
     private void UpdateMissionProgress()
@@ -795,8 +997,12 @@ public class HideSeekOverlay : MonoBehaviour
         if (!missionActive || !hasPlayerPosition)
             return;
 
+        bool wasReady = missionReady;
         missionDistance = Vector2.Distance(missionStart, new Vector2(gameX, gameY));
-        missionReady = missionDistance >= MissionTargetDistance;
+        missionReady = missionDistance >= settings.MissionTargetDistance;
+
+        if (!wasReady && missionReady)
+            Notify("MISSION READY", "Movement requirement met. Press R when you are ready.", AccentGreen, NotificationTone.Important, PlayerRole.Hider);
     }
 
     private void CompleteMovementMission()
@@ -807,6 +1013,7 @@ public class HideSeekOverlay : MonoBehaviour
         missionActive = false;
         missionCompleted = true;
         missionReady = false;
+        Notify("MISSION COMPLETE", "Movement mission completed.", AccentGreen, NotificationTone.Normal, PlayerRole.Hider);
         CoreEntry.Logger?.LogInfo($"Movement mission completed after travelling {missionDistance:0} units.");
     }
 
@@ -821,20 +1028,17 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawQuestionsPanel(Rect panel)
     {
         GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "QUESTIONS", panelHeadingStyle);
-        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Seeker economy + manual answer controls", panelSubtitleStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Seeker Points + manual answer controls", panelSubtitleStyle);
+
+        if (selectedRole != PlayerRole.Seeker)
+        {
+            activeTab = UiTab.Game;
+            return;
+        }
 
         float cardX = panel.x + 12f;
         float cardWidth = panel.width - 24f;
         float y = panel.y + 57f;
-
-        if (selectedRole != PlayerRole.Seeker)
-        {
-            Rect blocked = new Rect(cardX, y, cardWidth, 122f);
-            DrawPanelRect(blocked, CardBackground, BorderColor);
-            GUI.Label(new Rect(blocked.x + 12f, blocked.y + 7f, blocked.width - 24f, 20f), "SEEKER ONLY", cardHeadingStyle);
-            GUI.Label(new Rect(blocked.x + 12f, blocked.y + 38f, blocked.width - 24f, 62f), "The Questions tab belongs to the Seeker. Switch roles on the Game tab to use it.", emptyStateStyle);
-            return;
-        }
 
         Rect pointsCard = new Rect(cardX, y, cardWidth, 92f);
         DrawSeekerPointsCard(pointsCard);
@@ -871,8 +1075,9 @@ public class HideSeekOverlay : MonoBehaviour
 
     private void DrawCenterlineQuestionCard(Rect card)
     {
-        const int cost = 4;
-        DrawQuestionCardBase(card, "CENTERLINE", cost, CenterlineUnlockSeconds, out bool available);
+        const int cost = 0;
+        bool usedUp = centerlineUses >= settings.CenterlineMaxUses;
+        DrawQuestionCardBase(card, "CENTERLINE", cost, out bool available, usedUp ? "USED" : null);
 
         string line = centerlineVertical ? "X 17" : "Y 37";
         string answer = centerlineVertical
@@ -888,17 +1093,20 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.enabled = available;
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
-        if (GUI.Button(new Rect(card.x + 12f, card.y + 101f, card.width - 24f, 31f), "APPLY ANSWER", compactButtonStyle))
+        if (GUI.Button(new Rect(card.x + 12f, card.y + 101f, card.width - 24f, 31f), usedUp ? "USED THIS MATCH" : "APPLY FREE ANSWER", compactButtonStyle))
+        {
             ApplyQuestion(cost, $"Centerline {line} → {answer}",
                 MapConstraint.Split(centerlineVertical ? 'x' : 'y', centerlineVertical ? 1700f : 3700f, centerlineAnswerIndex == 0));
+            centerlineUses++;
+        }
         GUI.backgroundColor = oldBackground;
         GUI.enabled = true;
     }
 
     private void DrawNearestTowerQuestionCard(Rect card)
     {
-        const int cost = 5;
-        DrawQuestionCardBase(card, "NEAREST TOWER", cost, NearestTowerUnlockSeconds, out bool available);
+        int cost = settings.NearestTowerCost;
+        DrawQuestionCardBase(card, "NEAREST TOWER", cost, out bool available);
 
         MapFeature tower = Towers[Mathf.Clamp(nearestTowerAnswerIndex, 0, Towers.Length - 1)];
         if (DrawCycleButton(new Rect(card.x + 12f, card.y + 47f, card.width - 24f, 29f), $"ANSWER · {tower.Name}"))
@@ -916,8 +1124,8 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawTowerRadiusQuestionCard(Rect card)
     {
         int radius = TowerRadiusOptions[Mathf.Clamp(towerRadiusOptionIndex, 0, TowerRadiusOptions.Length - 1)];
-        int cost = TowerRadiusCosts[Mathf.Clamp(towerRadiusOptionIndex, 0, TowerRadiusCosts.Length - 1)];
-        DrawQuestionCardBase(card, "TOWER RADIUS", cost, TowerRadiusUnlockSeconds, out bool available);
+        int cost = TowerRadiusCost(towerRadiusOptionIndex);
+        DrawQuestionCardBase(card, "TOWER RADIUS", cost, out bool available);
 
         MapFeature tower = Towers[Mathf.Clamp(towerRadiusTowerIndex, 0, Towers.Length - 1)];
         float half = (card.width - 30f) * 0.5f;
@@ -938,21 +1146,20 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.enabled = true;
     }
 
-    private void DrawQuestionCardBase(Rect card, string name, int cost, float unlockSeconds, out bool available)
+    private void DrawQuestionCardBase(Rect card, string name, int cost, out bool available, string forcedState = null)
     {
-        bool unlocked = QuestionUnlocked(unlockSeconds);
-        available = CanApplyQuestion(unlockSeconds, cost);
-        Color border = unlocked ? new Color(0.34f, 0.30f, 0.17f, 1f) : BorderColor;
-        DrawPanelRect(card, CardBackground, border);
+        available = CanApplyQuestion(cost) && string.IsNullOrEmpty(forcedState);
+        DrawPanelRect(card, CardBackground, new Color(0.34f, 0.30f, 0.17f, 1f));
 
         GUI.Label(new Rect(card.x + 12f, card.y + 7f, card.width - 150f, 20f), name, cardHeadingStyle);
-        GUI.Label(new Rect(card.x + card.width - 136f, card.y + 7f, 124f, 20f), $"COST · {cost} SP", metricValueStyle);
+        GUI.Label(new Rect(card.x + card.width - 136f, card.y + 7f, 124f, 20f),
+            cost <= 0 ? "FREE" : $"COST · {cost} SP", metricValueStyle);
 
         string state;
-        if (questionTestOverride)
+        if (!string.IsNullOrEmpty(forcedState))
+            state = forcedState;
+        else if (questionTestOverride)
             state = "TEST OVERRIDE";
-        else if (!unlocked)
-            state = $"UNLOCKS {FormatTime(unlockSeconds)}";
         else if (QuestionCooldownActive())
             state = $"COOLDOWN {FormatTime(QuestionCooldownRemaining())}";
         else if (SeekerPointsBalance() < cost)
@@ -993,11 +1200,6 @@ public class HideSeekOverlay : MonoBehaviour
         }
     }
 
-    private bool QuestionUnlocked(float unlockSeconds)
-    {
-        return questionTestOverride || matchElapsedSeconds >= unlockSeconds;
-    }
-
     private bool QuestionCooldownActive()
     {
         return !questionTestOverride && questionCooldownUntil > matchElapsedSeconds;
@@ -1008,13 +1210,13 @@ public class HideSeekOverlay : MonoBehaviour
         return Mathf.Max(0f, questionCooldownUntil - matchElapsedSeconds);
     }
 
-    private bool CanApplyQuestion(float unlockSeconds, int cost)
+    private bool CanApplyQuestion(int cost)
     {
         if (selectedRole != PlayerRole.Seeker)
             return false;
         if (questionTestOverride)
             return true;
-        if (!QuestionUnlocked(unlockSeconds) || QuestionCooldownActive())
+        if (QuestionCooldownActive())
             return false;
         return SeekerPointsBalance() >= cost;
     }
@@ -1026,7 +1228,7 @@ public class HideSeekOverlay : MonoBehaviour
             if (SeekerPointsBalance() < cost || QuestionCooldownActive())
                 return;
             seekerPointsSpent += cost;
-            questionCooldownUntil = matchElapsedSeconds + QuestionCooldownSeconds;
+            questionCooldownUntil = matchElapsedSeconds + settings.QuestionCooldownSeconds;
         }
 
         if (constraint != null)
@@ -1043,7 +1245,7 @@ public class HideSeekOverlay : MonoBehaviour
 
     private int SeekerPointsEarned()
     {
-        return Mathf.FloorToInt(matchElapsedSeconds / 60f) * PointsPerMinute;
+        return Mathf.FloorToInt(matchElapsedSeconds / 60f) * settings.PointsPerMinute;
     }
 
     private int SeekerPointsBalance()
@@ -1051,17 +1253,71 @@ public class HideSeekOverlay : MonoBehaviour
         return Mathf.Max(0, SeekerPointsEarned() - seekerPointsSpent);
     }
 
+    private int TowerRadiusCost(int optionIndex)
+    {
+        switch (Mathf.Clamp(optionIndex, 0, 3))
+        {
+            case 0: return settings.TowerRadius500Cost;
+            case 1: return settings.TowerRadius400Cost;
+            case 2: return settings.TowerRadius300Cost;
+            default: return settings.TowerRadius250Cost;
+        }
+    }
+
+    private int LowestTowerRadiusCost()
+    {
+        return Mathf.Min(
+            Mathf.Min(settings.TowerRadius500Cost, settings.TowerRadius400Cost),
+            Mathf.Min(settings.TowerRadius300Cost, settings.TowerRadius250Cost));
+    }
+
     private string NextQuestionStatus()
     {
         if (questionTestOverride)
             return "Question test override is active.";
-        if (matchElapsedSeconds < CenterlineUnlockSeconds)
-            return $"Centerline unlocks in {FormatTime(CenterlineUnlockSeconds - matchElapsedSeconds)}.";
-        if (matchElapsedSeconds < NearestTowerUnlockSeconds)
-            return $"Nearest Tower unlocks in {FormatTime(NearestTowerUnlockSeconds - matchElapsedSeconds)}.";
-        if (matchElapsedSeconds < TowerRadiusUnlockSeconds)
-            return $"Tower Radius unlocks in {FormatTime(TowerRadiusUnlockSeconds - matchElapsedSeconds)}.";
-        return "All starter questions are unlocked.";
+
+        if (QuestionCooldownActive())
+            return $"Question cooldown · {FormatTime(QuestionCooldownRemaining())} remaining.";
+
+        int balance = SeekerPointsBalance();
+        if (centerlineUses < settings.CenterlineMaxUses)
+            return $"Centerline is free · {settings.CenterlineMaxUses - centerlineUses} use(s) remaining.";
+
+        return $"{balance} SP available · Nearest Tower {settings.NearestTowerCost} SP · Tower Radius from {LowestTowerRadiusCost()} SP.";
+    }
+
+    private void UpdateGameplayNotifications()
+    {
+        if (!initialized)
+            return;
+
+        bool cooldownActive = QuestionCooldownActive();
+        if (!questionTestOverride && previousCooldownActive && !cooldownActive)
+            Notify("QUESTION COOLDOWN ENDED", "Questions are available again.", AccentGreen, NotificationTone.Normal, PlayerRole.Seeker);
+        previousCooldownActive = questionTestOverride ? false : cooldownActive;
+
+        if (selectedRole != PlayerRole.Seeker || questionTestOverride || !matchRunning)
+        {
+            previousCanAffordNearest = false;
+            previousCanAffordRadius = false;
+            return;
+        }
+
+        int balance = SeekerPointsBalance();
+        bool canNearest = balance >= settings.NearestTowerCost;
+        bool canRadius = balance >= LowestTowerRadiusCost();
+
+        string newlyAffordable = string.Empty;
+        if (canNearest && !previousCanAffordNearest)
+            newlyAffordable = "Nearest Tower";
+        if (canRadius && !previousCanAffordRadius)
+            newlyAffordable = string.IsNullOrEmpty(newlyAffordable) ? "Tower Radius" : "Nearest Tower + Tower Radius";
+
+        if (!string.IsNullOrEmpty(newlyAffordable))
+            Notify("QUESTION AFFORDABLE", $"{newlyAffordable} can now be afforded.", AccentYellow, NotificationTone.Soft, PlayerRole.Seeker);
+
+        previousCanAffordNearest = canNearest;
+        previousCanAffordRadius = canRadius;
     }
 
     private void DrawNavigationPanel(Rect panel)
@@ -1184,37 +1440,299 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawMorePanel(Rect panel)
     {
         GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, panel.width - 28f, 21f), "MORE", panelHeadingStyle);
-        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Build info + development controls", panelSubtitleStyle);
+        GUI.Label(new Rect(panel.x + 14f, panel.y + 29f, panel.width - 28f, 18f), "Match settings, HUD, audio, and testing", panelSubtitleStyle);
 
         float cardX = panel.x + 12f;
         float cardWidth = panel.width - 24f;
         float y = panel.y + 57f;
 
-        Rect build = new Rect(cardX, y, cardWidth, 128f);
-        DrawPanelRect(build, CardBackground, BorderColor);
-        GUI.Label(new Rect(build.x + 12f, build.y + 7f, build.width - 24f, 20f), "NATIVE MOD", cardHeadingStyle);
-        DrawMetricRow(build, build.y + 33f, "Core", "0.0.18");
-        DrawMetricRow(build, build.y + 55f, "Position source", "Unity PlayerCharacter");
-        DrawMetricRow(build, build.y + 77f, "Browser bridge", "Not required");
-        GUI.Label(new Rect(build.x + 12f, build.y + 101f, build.width - 24f, 20f), "The old live-tracker plugin is only for the website.", emptyStateStyle);
-        y += build.height + 10f;
+        Rect gameplay = new Rect(cardX, y, cardWidth, 118f);
+        DrawPanelRect(gameplay, CardBackground, BorderColor);
+        GUI.Label(new Rect(gameplay.x + 12f, gameplay.y + 7f, gameplay.width - 24f, 20f), "GAMEPLAY", cardHeadingStyle);
 
-        Rect testing = new Rect(cardX, y, cardWidth, 146f);
+        int oldPoints = settings.PointsPerMinute;
+        settings.PointsPerMinute = DrawIntSettingRow(gameplay, gameplay.y + 31f, "Seeker points / min", settings.PointsPerMinute, 0, 10, 1, string.Empty);
+        if (settings.PointsPerMinute != oldPoints) SaveSettings();
+
+        int oldCooldown = Mathf.RoundToInt(settings.QuestionCooldownSeconds);
+        int newCooldown = DrawIntSettingRow(gameplay, gameplay.y + 53f, "Question cooldown", oldCooldown, 0, 900, 30, "s");
+        if (newCooldown != oldCooldown)
+        {
+            settings.QuestionCooldownSeconds = newCooldown;
+            SaveSettings();
+        }
+
+        int oldMission = Mathf.RoundToInt(settings.MissionTargetDistance);
+        int newMission = DrawIntSettingRow(gameplay, gameplay.y + 75f, "Mission distance", oldMission, 25, 1000, 25, "u");
+        if (newMission != oldMission)
+        {
+            settings.MissionTargetDistance = newMission;
+            SaveSettings();
+        }
+        y += gameplay.height + 8f;
+
+        Rect questions = new Rect(cardX, y, cardWidth, 168f);
+        DrawPanelRect(questions, CardBackground, BorderColor);
+        GUI.Label(new Rect(questions.x + 12f, questions.y + 7f, questions.width - 24f, 20f), "QUESTION RULES", cardHeadingStyle);
+
+        int oldCenterUses = settings.CenterlineMaxUses;
+        settings.CenterlineMaxUses = DrawIntSettingRow(questions, questions.y + 31f, "Centerline uses", settings.CenterlineMaxUses, 0, 5, 1, string.Empty);
+        if (settings.CenterlineMaxUses != oldCenterUses) SaveSettings();
+
+        int oldNearest = settings.NearestTowerCost;
+        settings.NearestTowerCost = DrawIntSettingRow(questions, questions.y + 53f, "Nearest Tower cost", settings.NearestTowerCost, 0, 30, 1, "SP");
+        if (settings.NearestTowerCost != oldNearest) SaveSettings();
+
+        int old500 = settings.TowerRadius500Cost;
+        settings.TowerRadius500Cost = DrawIntSettingRow(questions, questions.y + 75f, "Radius 500 cost", settings.TowerRadius500Cost, 0, 30, 1, "SP");
+        if (settings.TowerRadius500Cost != old500) SaveSettings();
+
+        int old400 = settings.TowerRadius400Cost;
+        settings.TowerRadius400Cost = DrawIntSettingRow(questions, questions.y + 97f, "Radius 400 cost", settings.TowerRadius400Cost, 0, 30, 1, "SP");
+        if (settings.TowerRadius400Cost != old400) SaveSettings();
+
+        int old300 = settings.TowerRadius300Cost;
+        settings.TowerRadius300Cost = DrawIntSettingRow(questions, questions.y + 119f, "Radius 300 cost", settings.TowerRadius300Cost, 0, 30, 1, "SP");
+        if (settings.TowerRadius300Cost != old300) SaveSettings();
+
+        int old250 = settings.TowerRadius250Cost;
+        settings.TowerRadius250Cost = DrawIntSettingRow(questions, questions.y + 141f, "Radius 250 cost", settings.TowerRadius250Cost, 0, 30, 1, "SP");
+        if (settings.TowerRadius250Cost != old250) SaveSettings();
+        y += questions.height + 8f;
+
+        Rect hud = new Rect(cardX, y, cardWidth, 118f);
+        DrawPanelRect(hud, CardBackground, BorderColor);
+        GUI.Label(new Rect(hud.x + 12f, hud.y + 7f, hud.width - 24f, 20f), "PASSIVE HUD", cardHeadingStyle);
+
+        bool oldMini = settings.MiniMapEnabled;
+        settings.MiniMapEnabled = DrawToggleSettingRow(hud, hud.y + 31f, "North-up mini-map", settings.MiniMapEnabled);
+        if (settings.MiniMapEnabled != oldMini) SaveSettings();
+
+        bool oldNav = settings.NavHudEnabled;
+        settings.NavHudEnabled = DrawToggleSettingRow(hud, hud.y + 53f, "Coordinates + compass", settings.NavHudEnabled);
+        if (settings.NavHudEnabled != oldNav) SaveSettings();
+
+        bool oldMissionHud = settings.MissionHudEnabled;
+        settings.MissionHudEnabled = DrawToggleSettingRow(hud, hud.y + 75f, "Mission HUD", settings.MissionHudEnabled);
+        if (settings.MissionHudEnabled != oldMissionHud) SaveSettings();
+
+        bool oldPopups = settings.NotificationsEnabled;
+        settings.NotificationsEnabled = DrawToggleSettingRow(hud, hud.y + 97f, "Notification popups", settings.NotificationsEnabled);
+        if (settings.NotificationsEnabled != oldPopups) SaveSettings();
+        y += hud.height + 8f;
+
+        Rect audio = new Rect(cardX, y, cardWidth, 96f);
+        DrawPanelRect(audio, CardBackground, BorderColor);
+        GUI.Label(new Rect(audio.x + 12f, audio.y + 7f, audio.width - 24f, 20f), "AUDIO", cardHeadingStyle);
+
+        bool oldSounds = settings.SoundsEnabled;
+        settings.SoundsEnabled = DrawToggleSettingRow(audio, audio.y + 31f, "Sounds", settings.SoundsEnabled);
+        if (settings.SoundsEnabled != oldSounds) SaveSettings();
+
+        bool oldNotifSounds = settings.NotificationSoundsEnabled;
+        settings.NotificationSoundsEnabled = DrawToggleSettingRow(audio, audio.y + 53f, "Notification sounds", settings.NotificationSoundsEnabled);
+        if (settings.NotificationSoundsEnabled != oldNotifSounds) SaveSettings();
+
+        int oldVolume = Mathf.RoundToInt(settings.SoundVolume * 100f);
+        int newVolume = DrawIntSettingRow(audio, audio.y + 75f, "Volume", oldVolume, 0, 100, 10, "%");
+        if (newVolume != oldVolume)
+        {
+            settings.SoundVolume = newVolume / 100f;
+            SaveSettings();
+        }
+        y += audio.height + 8f;
+
+        Rect testing = new Rect(cardX, y, cardWidth, 104f);
         DrawPanelRect(testing, CardBackground, BorderColor);
         GUI.Label(new Rect(testing.x + 12f, testing.y + 7f, testing.width - 24f, 20f), "QUESTION TESTING", cardHeadingStyle);
-        GUI.Label(new Rect(testing.x + 12f, testing.y + 34f, testing.width - 24f, 40f), "Bypasses unlock timers, point costs, and cooldowns so the question UI can be tested immediately.", emptyStateStyle);
+        GUI.Label(new Rect(testing.x + 12f, testing.y + 30f, testing.width - 24f, 35f),
+            "Bypasses point costs and cooldowns. Centerline use limits remain enforced.", emptyStateStyle);
 
         Color oldBackground = GUI.backgroundColor;
-        GUI.backgroundColor = questionTestOverride ? new Color(0.20f, 0.43f, 0.29f, 1f) : new Color(0.16f, 0.19f, 0.23f, 1f);
-        if (GUI.Button(new Rect(testing.x + 12f, testing.y + 91f, testing.width - 24f, 38f), questionTestOverride ? "TEST OVERRIDE · ON" : "TEST OVERRIDE · OFF", compactButtonStyle))
+        GUI.backgroundColor = questionTestOverride
+            ? new Color(0.20f, 0.43f, 0.29f, 1f)
+            : new Color(0.16f, 0.19f, 0.23f, 1f);
+        if (GUI.Button(new Rect(testing.x + 12f, testing.y + 67f, testing.width - 24f, 29f),
+            questionTestOverride ? "TEST OVERRIDE · ON" : "TEST OVERRIDE · OFF", compactButtonStyle))
             questionTestOverride = !questionTestOverride;
         GUI.backgroundColor = oldBackground;
-        y += testing.height + 10f;
+    }
 
-        Rect note = new Rect(cardX, y, cardWidth, 104f);
-        DrawPanelRect(note, CardBackground, BorderColor);
-        GUI.Label(new Rect(note.x + 12f, note.y + 7f, note.width - 24f, 20f), "CURRENT SCOPE", cardHeadingStyle);
-        GUI.Label(new Rect(note.x + 12f, note.y + 33f, note.width - 24f, 62f), "Gameplay state is local to this client for now. Multiplayer synchronization will be a separate layer after the local systems are proven.", emptyStateStyle);
+    private int DrawIntSettingRow(Rect card, float y, string label, int value, int min, int max, int step, string suffix)
+    {
+        GUI.Label(new Rect(card.x + 12f, y, card.width * 0.55f, 19f), label, metricLabelStyle);
+
+        float right = card.xMax - 12f;
+        if (GUI.Button(new Rect(right - 102f, y - 1f, 25f, 20f), "−", compactButtonStyle))
+            value = Mathf.Clamp(value - step, min, max);
+
+        GUI.Label(new Rect(right - 75f, y, 48f, 19f), string.IsNullOrEmpty(suffix) ? value.ToString() : $"{value}{suffix}", metricValueStyle);
+
+        if (GUI.Button(new Rect(right - 25f, y - 1f, 25f, 20f), "+", compactButtonStyle))
+            value = Mathf.Clamp(value + step, min, max);
+
+        return value;
+    }
+
+    private bool DrawToggleSettingRow(Rect card, float y, string label, bool value)
+    {
+        GUI.Label(new Rect(card.x + 12f, y, card.width * 0.62f, 19f), label, metricLabelStyle);
+
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = value ? new Color(0.15f, 0.24f, 0.19f, 1f) : new Color(0.16f, 0.19f, 0.23f, 1f);
+        if (GUI.Button(new Rect(card.xMax - 82f, y - 2f, 70f, 22f), value ? "ON" : "OFF", compactButtonStyle))
+            value = !value;
+        GUI.backgroundColor = oldBackground;
+        return value;
+    }
+
+
+    private void EnsureInitialized()
+    {
+        if (initialized)
+            return;
+
+        initialized = true;
+        LoadSettings();
+        TryInitializeAudio();
+    }
+
+    private void LoadSettings()
+    {
+        try
+        {
+            string runtimeDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".";
+            settingsPath = Path.Combine(runtimeDir, "settings.json");
+
+            if (File.Exists(settingsPath))
+            {
+                LocalSettings loaded = JsonSerializer.Deserialize<LocalSettings>(File.ReadAllText(settingsPath));
+                if (loaded != null)
+                    settings = loaded;
+            }
+
+            settings.Clamp();
+            SaveSettings();
+            CoreEntry.Logger?.LogInfo($"Hide + Seek settings loaded from {settingsPath}");
+        }
+        catch (Exception ex)
+        {
+            settings = new LocalSettings();
+            CoreEntry.Logger?.LogWarning($"Could not load Hide + Seek settings; using defaults. {ex.Message}");
+        }
+    }
+
+    private void SaveSettings()
+    {
+        if (string.IsNullOrEmpty(settingsPath))
+            return;
+
+        try
+        {
+            settings.Clamp();
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, options));
+        }
+        catch (Exception ex)
+        {
+            CoreEntry.Logger?.LogWarning($"Could not save Hide + Seek settings: {ex.Message}");
+        }
+    }
+
+    private void TryInitializeAudio()
+    {
+        try
+        {
+            uiAudioSource = gameObject.AddComponent<AudioSource>();
+            uiAudioSource.playOnAwake = false;
+            uiAudioSource.loop = false;
+            uiAudioSource.spatialBlend = 0f;
+
+            softToneClip = CreateToneClip("BWHS Soft", 620f, 0.08f);
+            normalToneClip = CreateToneClip("BWHS Normal", 760f, 0.14f);
+            importantToneClip = CreateToneClip("BWHS Important", 880f, 0.22f);
+        }
+        catch (Exception ex)
+        {
+            CoreEntry.Logger?.LogWarning($"Hide + Seek notification audio unavailable: {ex.Message}");
+            uiAudioSource = null;
+        }
+    }
+
+    private static AudioClip CreateToneClip(string name, float frequency, float duration)
+    {
+        const int sampleRate = 44100;
+        int sampleCount = Mathf.Max(1, Mathf.RoundToInt(sampleRate * duration));
+        AudioClip clip = AudioClip.Create(name, sampleCount, 1, sampleRate, false);
+        var data = new Il2CppStructArray<float>(sampleCount);
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t = i / (float)sampleRate;
+            float attack = Mathf.Clamp01(i / (sampleRate * 0.008f));
+            float release = Mathf.Clamp01((sampleCount - 1 - i) / (sampleRate * 0.025f));
+            float envelope = Mathf.Min(attack, release);
+            data[i] = Mathf.Sin(2f * Mathf.PI * frequency * t) * 0.18f * envelope;
+        }
+
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    private void Notify(string title, string message, Color accent, NotificationTone tone, PlayerRole? role = null)
+    {
+        if (role.HasValue && selectedRole != role.Value)
+            return;
+
+        if (settings.NotificationsEnabled)
+        {
+            if (notifications.Count >= 5)
+                notifications.RemoveAt(0);
+            notifications.Add(new UiNotification(title, message, accent, Time.unscaledTime, 4.5f));
+        }
+
+        if (settings.SoundsEnabled && settings.NotificationSoundsEnabled)
+            PlayNotificationTone(tone);
+    }
+
+    private void PlayNotificationTone(NotificationTone tone)
+    {
+        if (uiAudioSource == null)
+            return;
+
+        AudioClip clip = tone == NotificationTone.Important
+            ? importantToneClip
+            : tone == NotificationTone.Normal ? normalToneClip : softToneClip;
+
+        if (clip != null)
+            uiAudioSource.PlayOneShot(clip, settings.SoundVolume);
+    }
+
+    private void DrawNotifications()
+    {
+        float now = Time.unscaledTime;
+        for (int i = notifications.Count - 1; i >= 0; i--)
+        {
+            if (now - notifications[i].CreatedAt >= notifications[i].Duration)
+                notifications.RemoveAt(i);
+        }
+
+        if (!settings.NotificationsEnabled || notifications.Count == 0)
+            return;
+
+        int visible = Mathf.Min(3, notifications.Count);
+        float width = 340f;
+        float x = (Screen.width - width) * 0.5f;
+        float y = overlayOpen ? TopBarHeight + 12f : 14f;
+
+        for (int i = 0; i < visible; i++)
+        {
+            UiNotification notification = notifications[notifications.Count - visible + i];
+            Rect rect = new Rect(x, y + i * 70f, width, 60f);
+            DrawPanelRect(rect, new Color(0.055f, 0.068f, 0.088f, 0.96f), notification.Accent);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 7f, rect.width - 24f, 18f), notification.Title, cardHeadingStyle);
+            GUI.Label(new Rect(rect.x + 12f, rect.y + 29f, rect.width - 24f, 24f), notification.Message, emptyStateStyle);
+        }
     }
 
     private void DrawToolDock(Rect dock)
@@ -2225,6 +2743,13 @@ public class HideSeekOverlay : MonoBehaviour
             UnityEngine.Object.Destroy(constraintMaskTexture);
             constraintMaskTexture = null;
         }
+
+        if (softToneClip != null)
+            UnityEngine.Object.Destroy(softToneClip);
+        if (normalToneClip != null)
+            UnityEngine.Object.Destroy(normalToneClip);
+        if (importantToneClip != null)
+            UnityEngine.Object.Destroy(importantToneClip);
     }
 
     private enum MapTool
@@ -2285,6 +2810,65 @@ public class HideSeekOverlay : MonoBehaviour
 
         public static MapConstraint Radar(string towerName, float radius, bool keepInside) =>
             new MapConstraint(ConstraintKind.TowerRadius, '\0', 0f, false, towerName, radius, keepInside);
+    }
+
+    private enum NotificationTone
+    {
+        Soft,
+        Normal,
+        Important
+    }
+
+    public sealed class LocalSettings
+    {
+        public int PointsPerMinute { get; set; } = 1;
+        public float QuestionCooldownSeconds { get; set; } = 300f;
+        public int CenterlineMaxUses { get; set; } = 1;
+        public int NearestTowerCost { get; set; } = 5;
+        public int TowerRadius500Cost { get; set; } = 4;
+        public int TowerRadius400Cost { get; set; } = 5;
+        public int TowerRadius300Cost { get; set; } = 7;
+        public int TowerRadius250Cost { get; set; } = 9;
+        public float MissionTargetDistance { get; set; } = 200f;
+        public bool MiniMapEnabled { get; set; } = true;
+        public bool NavHudEnabled { get; set; } = true;
+        public bool MissionHudEnabled { get; set; } = true;
+        public bool NotificationsEnabled { get; set; } = true;
+        public bool SoundsEnabled { get; set; } = true;
+        public bool NotificationSoundsEnabled { get; set; } = true;
+        public float SoundVolume { get; set; } = 0.7f;
+
+        public void Clamp()
+        {
+            PointsPerMinute = Mathf.Clamp(PointsPerMinute, 0, 10);
+            QuestionCooldownSeconds = Mathf.Clamp(QuestionCooldownSeconds, 0f, 900f);
+            CenterlineMaxUses = Mathf.Clamp(CenterlineMaxUses, 0, 5);
+            NearestTowerCost = Mathf.Clamp(NearestTowerCost, 0, 30);
+            TowerRadius500Cost = Mathf.Clamp(TowerRadius500Cost, 0, 30);
+            TowerRadius400Cost = Mathf.Clamp(TowerRadius400Cost, 0, 30);
+            TowerRadius300Cost = Mathf.Clamp(TowerRadius300Cost, 0, 30);
+            TowerRadius250Cost = Mathf.Clamp(TowerRadius250Cost, 0, 30);
+            MissionTargetDistance = Mathf.Clamp(MissionTargetDistance, 25f, 1000f);
+            SoundVolume = Mathf.Clamp01(SoundVolume);
+        }
+    }
+
+    private sealed class UiNotification
+    {
+        public readonly string Title;
+        public readonly string Message;
+        public readonly Color Accent;
+        public readonly float CreatedAt;
+        public readonly float Duration;
+
+        public UiNotification(string title, string message, Color accent, float createdAt, float duration)
+        {
+            Title = title;
+            Message = message;
+            Accent = accent;
+            CreatedAt = createdAt;
+            Duration = duration;
+        }
     }
 
     private sealed class MapFeature
