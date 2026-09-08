@@ -13,6 +13,10 @@ if not defined PROFILE (
 set "COREURL=%~1"
 if not defined COREURL set "COREURL=https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Core.gz.b64"
 
+set "LOADER_VERSION=0.1.1.0"
+set "LOADER_URL=https://raw.githubusercontent.com/MisterWolf03/big-walk-hide-seek/bw-hs-feed-7c41e9/feed/9f6d2a/BigWalkHideSeek.Loader.gz.b64"
+set "LOADER_SHA256=b4825436c31bad136e4dbd7c96bb4539bfaa72829350b30a266355c881e8f96e"
+
 where dotnet >nul 2>nul
 if errorlevel 1 (
   echo ERROR: .NET SDK not found.
@@ -50,15 +54,36 @@ if errorlevel 1 (
 >>"%OUT%\latest.json" echo   "encoding": "gzip-base64"
 >>"%OUT%\latest.json" echo }
 
+>"%OUT%\updater.json" echo {
+>>"%OUT%\updater.json" echo   "schemaVersion": 1,
+>>"%OUT%\updater.json" echo   "loader": {
+>>"%OUT%\updater.json" echo     "version": "%LOADER_VERSION%",
+>>"%OUT%\updater.json" echo     "url": "%LOADER_URL%",
+>>"%OUT%\updater.json" echo     "sha256": "%LOADER_SHA256%",
+>>"%OUT%\updater.json" echo     "encoding": "gzip-base64"
+>>"%OUT%\updater.json" echo   },
+>>"%OUT%\updater.json" echo   "core": {
+>>"%OUT%\updater.json" echo     "version": "%VERSION%",
+>>"%OUT%\updater.json" echo     "url": "%COREURL%",
+>>"%OUT%\updater.json" echo     "sha256": "%HASH%",
+>>"%OUT%\updater.json" echo     "encoding": "gzip-base64"
+>>"%OUT%\updater.json" echo   },
+>>"%OUT%\updater.json" echo   "releaseNotes": "Core %VERSION% update."
+>>"%OUT%\updater.json" echo }
+
 echo.
 echo Update package prepared:
 echo   %OUT%\BigWalkHideSeek.Core.dll
 echo   %OUT%\BigWalkHideSeek.Core.gz.b64
 echo   %OUT%\latest.json
+echo   %OUT%\updater.json
 echo.
 echo Version: %VERSION%
 echo SHA-256: %HASH%
 echo.
-echo Upload BigWalkHideSeek.Core.gz.b64 here to publish the update.
+echo To publish, upload these THREE files to feed/9f6d2a on branch bw-hs-feed-7c41e9:
+echo   BigWalkHideSeek.Core.gz.b64
+echo   latest.json
+echo   updater.json
 echo.
 pause
