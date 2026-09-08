@@ -1,0 +1,39 @@
+name: Apply Core 0.0.25 Multiplayer Foundation
+
+on:
+  push:
+    branches:
+      - mod-prototype
+    paths:
+      - "dev-tools/apply_core_0_0_25_multiplayer_foundation.py"
+      - ".github/workflows/apply-core-0.0.25-multiplayer-foundation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: mod-prototype
+
+      - name: Apply Core 0.0.25 multiplayer foundation patch
+        run: python dev-tools/apply_core_0_0_25_multiplayer_foundation.py
+
+      - name: Commit patched Core
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add in-game-mod/core/CoreEntry.cs in-game-mod/core/BigWalkHideSeek.Core.csproj
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Add Core 0.0.25 multiplayer room foundation"
+            git push
+          fi
