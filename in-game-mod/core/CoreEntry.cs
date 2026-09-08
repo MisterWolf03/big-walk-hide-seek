@@ -147,6 +147,8 @@ public class HideSeekOverlay : MonoBehaviour
     private string roomDisplayName = "Player";
     private string roomJoinCode = string.Empty;
     private bool roomTextEditing;
+    private RoomTextTarget activeRoomTextTarget;
+    private bool roomReplaceOnType;
 
     private GUIStyle brandStyle;
     private GUIStyle versionStyle;
@@ -190,6 +192,7 @@ public class HideSeekOverlay : MonoBehaviour
     {
         EnsureInitialized();
         UpdateMultiplayer();
+        UpdateRoomTextInput();
         UpdateMatchTimer();
 
         bool needsPosition = overlayOpen
@@ -611,7 +614,7 @@ public class HideSeekOverlay : MonoBehaviour
     {
         EnsureInitialized();
         EnsureStyles();
-        roomTextEditing = false;
+        roomTextEditing = activeRoomTextTarget != RoomTextTarget.None;
         GUI.depth = -10000;
 
         Color oldColor = GUI.color;
@@ -1649,8 +1652,8 @@ public class HideSeekOverlay : MonoBehaviour
                 "Everyone uses the same six-character H+S room code. The room host controls the shared timer.", emptyStateStyle);
 
             GUI.Label(new Rect(connect.x + 12f, connect.y + 70f, 90f, 19f), "DISPLAY NAME", metricLabelStyle);
-            GUI.SetNextControlName("BWHS_ROOM_NAME");
-            roomDisplayName = GUI.TextField(new Rect(connect.x + 118f, connect.y + 67f, connect.width - 130f, 25f), roomDisplayName ?? string.Empty, 28);
+            DrawRoomTextBox(new Rect(connect.x + 118f, connect.y + 67f, connect.width - 130f, 25f),
+                roomDisplayName, RoomTextTarget.DisplayName, "Player");
 
             GUI.Label(new Rect(connect.x + 12f, connect.y + 103f, 90f, 19f), "YOUR ROLE", metricLabelStyle);
             if (DrawRoleButton(new Rect(connect.x + 118f, connect.y + 99f, 94f, 29f), "SEEKER", PlayerRole.Seeker))
@@ -1671,8 +1674,8 @@ public class HideSeekOverlay : MonoBehaviour
             }
 
             GUI.Label(new Rect(connect.x + 12f, connect.y + 187f, 90f, 19f), "ROOM CODE", metricLabelStyle);
-            GUI.SetNextControlName("BWHS_ROOM_CODE");
-            roomJoinCode = FirebaseRoomClient.NormalizeCode(GUI.TextField(new Rect(connect.x + 118f, connect.y + 184f, 92f, 25f), roomJoinCode ?? string.Empty, 6));
+            DrawRoomTextBox(new Rect(connect.x + 118f, connect.y + 184f, 92f, 25f),
+                roomJoinCode, RoomTextTarget.RoomCode, "ABC123");
             GUI.backgroundColor = new Color(0.18f, 0.24f, 0.34f, 1f);
             GUI.enabled = oldEnabled && !roomClient.IsBusy && roomJoinCode.Length == 6;
             if (GUI.Button(new Rect(connect.x + 218f, connect.y + 182f, connect.width - 230f, 29f), "JOIN", compactButtonStyle))
@@ -1686,9 +1689,6 @@ public class HideSeekOverlay : MonoBehaviour
             GUI.backgroundColor = oldBackground;
 
             GUI.Label(new Rect(connect.x + 12f, connect.y + 224f, connect.width - 24f, 34f), roomClient.Status, emptyStateStyle);
-
-            string focused = GUI.GetNameOfFocusedControl();
-            roomTextEditing = focused == "BWHS_ROOM_NAME" || focused == "BWHS_ROOM_CODE";
             return;
         }
 
@@ -1747,6 +1747,93 @@ public class HideSeekOverlay : MonoBehaviour
             roomClient.BeginLeave();
         GUI.enabled = leaveEnabled;
         GUI.backgroundColor = leaveBg;
+    }
+
+    private void UpdateRoomTextInput()
+    {
+        roomTextEditing = activeRoomTextTarget != RoomTextTarget.None;
+        if (!overlayOpen || !roomTextEditing)
+            return;
+
+        string typed = Input.inputString;
+        if (string.IsNullOrEmpty(typed))
+            return;
+
+        foreach (char raw in typed)
+        {
+            if (raw == '\n' || raw == '\r')
+            {
+                activeRoomTextTarget = RoomTextTarget.None;
+                roomTextEditing = false;
+                roomReplaceOnType = false;
+                continue;
+            }
+
+            if (raw == '\b')
+            {
+                if (activeRoomTextTarget == RoomTextTarget.DisplayName)
+                {
+                    if (roomReplaceOnType)
+                        roomDisplayName = string.Empty;
+                    else if (!string.IsNullOrEmpty(roomDisplayName))
+                        roomDisplayName = roomDisplayName.Substring(0, roomDisplayName.Length - 1);
+                }
+                else if (activeRoomTextTarget == RoomTextTarget.RoomCode)
+                {
+                    if (roomReplaceOnType)
+                        roomJoinCode = string.Empty;
+                    else if (!string.IsNullOrEmpty(roomJoinCode))
+                        roomJoinCode = roomJoinCode.Substring(0, roomJoinCode.Length - 1);
+                }
+                roomReplaceOnType = false;
+                continue;
+            }
+
+            if (raw < 32 || raw == 127)
+                continue;
+
+            if (activeRoomTextTarget == RoomTextTarget.DisplayName)
+            {
+                if (roomReplaceOnType)
+                    roomDisplayName = string.Empty;
+                roomReplaceOnType = false;
+                if ((roomDisplayName?.Length ?? 0) < 28)
+                    roomDisplayName = (roomDisplayName ?? string.Empty) + raw;
+            }
+            else if (activeRoomTextTarget == RoomTextTarget.RoomCode)
+            {
+                if (!char.IsLetterOrDigit(raw))
+                    continue;
+                if (roomReplaceOnType)
+                    roomJoinCode = string.Empty;
+                roomReplaceOnType = false;
+                if ((roomJoinCode?.Length ?? 0) < 6)
+                    roomJoinCode = FirebaseRoomClient.NormalizeCode((roomJoinCode ?? string.Empty) + raw);
+            }
+        }
+    }
+
+    private void DrawRoomTextBox(Rect rect, string value, RoomTextTarget target, string placeholder)
+    {
+        bool active = activeRoomTextTarget == target;
+        DrawPanelRect(rect,
+            active ? new Color(0.10f, 0.12f, 0.15f, 1f) : new Color(0.07f, 0.085f, 0.105f, 1f),
+            active ? AccentYellow : BorderColor);
+
+        string display = string.IsNullOrEmpty(value) ? placeholder : value;
+        Color old = GUI.color;
+        GUI.color = string.IsNullOrEmpty(value) ? MutedText : Color.white;
+        GUI.Label(new Rect(rect.x + 7f, rect.y + 2f, rect.width - 14f, rect.height - 4f), display, hintStyle);
+        GUI.color = old;
+
+        Event evt = Event.current;
+        if (evt != null && evt.type == EventType.MouseDown && evt.button == 0 && rect.Contains(evt.mousePosition))
+        {
+            activeRoomTextTarget = target;
+            roomTextEditing = true;
+            roomReplaceOnType = true;
+            evt.Use();
+        }
     }
 
     private void DrawMorePanel(Rect panel)
@@ -3115,6 +3202,13 @@ public class HideSeekOverlay : MonoBehaviour
     {
         Seeker,
         Hider
+    }
+
+    private enum RoomTextTarget
+    {
+        None,
+        DisplayName,
+        RoomCode
     }
 
 
