@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using BepInEx.Logging;
@@ -14,7 +15,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.12 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.13 configured.");
     }
 }
 
@@ -65,6 +66,11 @@ public class HideSeekOverlay : MonoBehaviour
     private bool showTowers = true;
     private bool showLandmarks = true;
 
+    private MapTool activeTool = MapTool.Pan;
+    private readonly List<UserMarker> userMarkers = new List<UserMarker>();
+    private int nextMarkerId = 1;
+    private int activeMarkerId = -1;
+
     private GUIStyle titleStyle;
     private GUIStyle subtitleStyle;
     private GUIStyle statusStyle;
@@ -77,6 +83,11 @@ public class HideSeekOverlay : MonoBehaviour
     private GUIStyle featureGlyphStyle;
     private GUIStyle featureLabelStyle;
     private GUIStyle coordinateStyle;
+    private GUIStyle userMarkerOutlineStyle;
+    private GUIStyle userMarkerStyle;
+    private GUIStyle userMarkerLabelStyle;
+    private GUIStyle markerPanelTitleStyle;
+    private GUIStyle markerPanelValueStyle;
 
     public void Update()
     {
@@ -312,7 +323,7 @@ public class HideSeekOverlay : MonoBehaviour
     private void DrawTopBar()
     {
         GUI.Label(new Rect(18f, 8f, 430f, 30f), "BIG WALK HIDE + SEEK", titleStyle);
-        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.12", subtitleStyle);
+        GUI.Label(new Rect(20f, 37f, 420f, 18f), "IN-GAME MAP · CORE v0.0.13", subtitleStyle);
 
         string status = hasPlayerPosition
             ? $"LIVE  ·  X {gameX:0}   Y {gameY:0}"
@@ -338,18 +349,24 @@ public class HideSeekOverlay : MonoBehaviour
             return;
         }
 
-        const float controlWidth = 586f;
+        const float controlWidth = 742f;
         Rect controlRectGlobal = new Rect(viewport.x + 10f, viewport.y + 10f, controlWidth, 42f);
-        HandleMapInput(viewport, controlRectGlobal);
+        Rect markerPanelGlobal = userMarkers.Count > 0
+            ? new Rect(viewport.x + viewport.width - 266f, viewport.y + 62f, 256f, 112f)
+            : new Rect(-1000f, -1000f, 0f, 0f);
+
+        Rect mapRect = GetMapRect(viewport.width, viewport.height);
+        HandleMapInput(viewport, controlRectGlobal, markerPanelGlobal, mapRect);
 
         Event evt = Event.current;
         Vector2 globalMouse = evt != null ? evt.mousePosition : new Vector2(-1000f, -1000f);
-        bool canShowCoordinateTip = viewport.Contains(globalMouse) && !controlRectGlobal.Contains(globalMouse);
+        bool canShowCoordinateTip = viewport.Contains(globalMouse)
+            && !controlRectGlobal.Contains(globalMouse)
+            && !markerPanelGlobal.Contains(globalMouse);
         Vector2 localMouse = new Vector2(globalMouse.x - viewport.x, globalMouse.y - viewport.y);
 
         GUI.BeginGroup(viewport);
 
-        Rect mapRect = GetMapRect(viewport.width, viewport.height);
         GUI.DrawTexture(mapRect, mapTexture, ScaleMode.StretchToFill, false);
 
         if (showGrid)
@@ -358,6 +375,9 @@ public class HideSeekOverlay : MonoBehaviour
             DrawFeatures(mapRect, Towers, false);
         if (showLandmarks)
             DrawFeatures(mapRect, Landmarks, true);
+
+        DrawUserMarkers(mapRect);
+
         if (hasPlayerPosition)
             DrawPlayerMarker(mapRect);
 
@@ -382,8 +402,15 @@ public class HideSeekOverlay : MonoBehaviour
             ZoomAt(viewport.width, viewport.height, new Vector2(viewport.width * 0.5f, viewport.height * 0.5f), 1.25f);
         x += 42f;
 
-        GUI.Label(new Rect(x, 19f, 52f, 24f), $"{zoom:0.0}×", hintStyle);
-        x += 64f;
+        GUI.Label(new Rect(x, 19f, 48f, 24f), $"{zoom:0.0}×", hintStyle);
+        x += 54f;
+
+        if (DrawToolButton(new Rect(x, 15f, 54f, 32f), "PAN", activeTool == MapTool.Pan))
+            activeTool = MapTool.Pan;
+        x += 60f;
+        if (DrawToolButton(new Rect(x, 15f, 76f, 32f), "MARKER", activeTool == MapTool.Marker))
+            activeTool = MapTool.Marker;
+        x += 82f;
 
         showGrid = DrawToggleButton(new Rect(x, 15f, 64f, 32f), "GRID", showGrid);
         x += 70f;
@@ -391,10 +418,17 @@ public class HideSeekOverlay : MonoBehaviour
         x += 86f;
         showLandmarks = DrawToggleButton(new Rect(x, 15f, 104f, 32f), "LANDMARKS", showLandmarks);
 
+        if (userMarkers.Count > 0)
+            DrawMarkerPanel(viewport.width);
+
         if (canShowCoordinateTip)
             DrawCoordinateTip(localMouse, mapRect, viewport.width, viewport.height);
 
-        GUI.Label(new Rect(12f, viewport.height - 28f, 700f, 20f), "Drag to pan  ·  Mouse wheel to zoom  ·  Hover for Y/X coordinates  ·  F7/Esc close", hintStyle);
+        string hint = activeTool == MapTool.Marker
+            ? "MARKER mode · Click map to place · Click an existing marker to select · Mouse wheel to zoom · F7/Esc close"
+            : "PAN mode · Drag to pan · Click a marker to select · Mouse wheel to zoom · F7/Esc close";
+        GUI.Label(new Rect(12f, viewport.height - 28f, 900f, 20f), hint, hintStyle);
+
         GUI.EndGroup();
     }
 
@@ -407,6 +441,17 @@ public class HideSeekOverlay : MonoBehaviour
         bool clicked = GUI.Button(rect, label);
         GUI.backgroundColor = oldBackground;
         return clicked ? !value : value;
+    }
+
+    private bool DrawToolButton(Rect rect, string label, bool active)
+    {
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = active
+            ? new Color(0.18f, 0.48f, 0.67f, 1f)
+            : new Color(0.16f, 0.18f, 0.22f, 1f);
+        bool clicked = GUI.Button(rect, label);
+        GUI.backgroundColor = oldBackground;
+        return clicked;
     }
 
     private Rect GetMapRect(float viewportWidth, float viewportHeight)
@@ -430,6 +475,13 @@ public class HideSeekOverlay : MonoBehaviour
             mapRect.x + (pixel.x / mapTexture.width) * mapRect.width,
             mapRect.y + (pixel.y / mapTexture.height) * mapRect.height
         );
+    }
+
+    private Vector2 OverlayPointToGame(Rect mapRect, Vector2 localPoint)
+    {
+        float px = ((localPoint.x - mapRect.x) / mapRect.width) * mapTexture.width;
+        float py = ((localPoint.y - mapRect.y) / mapRect.height) * mapTexture.height;
+        return MapPixelToGame(px, py);
     }
 
     private void DrawGrid(Rect mapRect)
@@ -505,14 +557,69 @@ public class HideSeekOverlay : MonoBehaviour
         }
     }
 
+    private void DrawUserMarkers(Rect mapRect)
+    {
+        foreach (UserMarker marker in userMarkers)
+        {
+            Vector2 point = GameToOverlayPoint(mapRect, marker.X, marker.Y);
+            if (point.x < mapRect.xMin - 24f || point.x > mapRect.xMax + 24f || point.y < mapRect.yMin - 24f || point.y > mapRect.yMax + 24f)
+                continue;
+
+            Rect glyphRect = new Rect(point.x - 17f, point.y - 18f, 34f, 34f);
+            bool active = marker.Id == activeMarkerId;
+
+            Color oldColor = GUI.color;
+            GUI.color = active ? Color.white : new Color(0.08f, 0.09f, 0.11f, 0.98f);
+            GUI.Label(glyphRect, "◆", userMarkerOutlineStyle);
+            GUI.color = new Color(1f, 0.76f, 0.18f, 1f);
+            GUI.Label(glyphRect, "◆", userMarkerStyle);
+
+            Rect labelRect = new Rect(point.x + 14f, point.y - 10f, 56f, 22f);
+            GUI.color = new Color(0f, 0f, 0f, 0.92f);
+            GUI.Label(new Rect(labelRect.x - 1f, labelRect.y, labelRect.width, labelRect.height), $"M{marker.Id}", userMarkerLabelStyle);
+            GUI.Label(new Rect(labelRect.x + 1f, labelRect.y, labelRect.width, labelRect.height), $"M{marker.Id}", userMarkerLabelStyle);
+            GUI.color = Color.white;
+            GUI.Label(labelRect, $"M{marker.Id}", userMarkerLabelStyle);
+            GUI.color = oldColor;
+        }
+    }
+
+    private void DrawMarkerPanel(float viewportWidth)
+    {
+        Rect panel = new Rect(viewportWidth - 266f, 62f, 256f, 112f);
+        Color oldBackground = GUI.backgroundColor;
+        GUI.backgroundColor = new Color(0.055f, 0.065f, 0.085f, 0.97f);
+        GUI.Box(panel, GUIContent.none);
+        GUI.backgroundColor = oldBackground;
+
+        UserMarker active = GetActiveMarker();
+        GUI.Label(new Rect(panel.x + 12f, panel.y + 8f, 220f, 22f), $"MARKERS  ·  {userMarkers.Count}", markerPanelTitleStyle);
+
+        if (active != null)
+        {
+            GUI.Label(new Rect(panel.x + 12f, panel.y + 31f, 220f, 20f), $"Active: M{active.Id}", markerPanelValueStyle);
+            GUI.Label(new Rect(panel.x + 12f, panel.y + 50f, 220f, 20f), $"Y {active.Y:0}, X {active.X:0}", markerPanelValueStyle);
+        }
+        else
+        {
+            GUI.Label(new Rect(panel.x + 12f, panel.y + 37f, 220f, 20f), "Click a marker to select it", markerPanelValueStyle);
+        }
+
+        GUI.enabled = active != null;
+        if (GUI.Button(new Rect(panel.x + 12f, panel.y + 78f, 108f, 26f), "REMOVE ACTIVE"))
+            RemoveActiveMarker();
+        GUI.enabled = true;
+
+        if (GUI.Button(new Rect(panel.x + 128f, panel.y + 78f, 116f, 26f), "CLEAR ALL"))
+            ClearAllMarkers();
+    }
+
     private void DrawCoordinateTip(Vector2 localMouse, Rect mapRect, float viewportWidth, float viewportHeight)
     {
         if (!mapRect.Contains(localMouse))
             return;
 
-        float px = ((localMouse.x - mapRect.x) / mapRect.width) * mapTexture.width;
-        float py = ((localMouse.y - mapRect.y) / mapRect.height) * mapTexture.height;
-        Vector2 game = MapPixelToGame(px, py);
+        Vector2 game = OverlayPointToGame(mapRect, localMouse);
 
         const float width = 154f;
         const float height = 28f;
@@ -544,14 +651,14 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.Label(shadow, "●", markerStyle);
     }
 
-    private void HandleMapInput(Rect viewport, Rect controlRectGlobal)
+    private void HandleMapInput(Rect viewport, Rect controlRectGlobal, Rect markerPanelGlobal, Rect mapRect)
     {
         Event evt = Event.current;
         if (evt == null || evt.type == EventType.Used)
             return;
 
         Vector2 mouse = evt.mousePosition;
-        if (!viewport.Contains(mouse) || controlRectGlobal.Contains(mouse))
+        if (!viewport.Contains(mouse) || controlRectGlobal.Contains(mouse) || markerPanelGlobal.Contains(mouse))
             return;
 
         Vector2 localMouse = new Vector2(mouse.x - viewport.x, mouse.y - viewport.y);
@@ -564,11 +671,92 @@ public class HideSeekOverlay : MonoBehaviour
             return;
         }
 
-        if (evt.type == EventType.MouseDrag && evt.button == 0)
+        if (evt.type == EventType.MouseDown && evt.button == 0 && mapRect.Contains(localMouse))
+        {
+            int hitMarker = FindMarkerAt(localMouse, mapRect);
+            if (hitMarker >= 0)
+            {
+                activeMarkerId = hitMarker;
+                evt.Use();
+                return;
+            }
+
+            if (activeTool == MapTool.Marker)
+            {
+                AddMarkerAt(localMouse, mapRect);
+                evt.Use();
+                return;
+            }
+        }
+
+        if (activeTool == MapTool.Pan && evt.type == EventType.MouseDrag && evt.button == 0)
         {
             pan += evt.delta;
             evt.Use();
         }
+    }
+
+    private int FindMarkerAt(Vector2 localMouse, Rect mapRect)
+    {
+        const float hitRadius = 16f;
+        float bestDistance = hitRadius;
+        int bestId = -1;
+
+        foreach (UserMarker marker in userMarkers)
+        {
+            Vector2 point = GameToOverlayPoint(mapRect, marker.X, marker.Y);
+            float distance = Vector2.Distance(localMouse, point);
+            if (distance <= bestDistance)
+            {
+                bestDistance = distance;
+                bestId = marker.Id;
+            }
+        }
+
+        return bestId;
+    }
+
+    private void AddMarkerAt(Vector2 localMouse, Rect mapRect)
+    {
+        Vector2 game = OverlayPointToGame(mapRect, localMouse);
+        var marker = new UserMarker(nextMarkerId++, game.x, game.y);
+        userMarkers.Add(marker);
+        activeMarkerId = marker.Id;
+        CoreEntry.Logger?.LogInfo($"Map marker M{marker.Id} placed at Y {marker.Y:0}, X {marker.X:0}.");
+    }
+
+    private UserMarker GetActiveMarker()
+    {
+        foreach (UserMarker marker in userMarkers)
+        {
+            if (marker.Id == activeMarkerId)
+                return marker;
+        }
+        return null;
+    }
+
+    private void RemoveActiveMarker()
+    {
+        if (activeMarkerId < 0)
+            return;
+
+        for (int i = userMarkers.Count - 1; i >= 0; i--)
+        {
+            if (userMarkers[i].Id == activeMarkerId)
+            {
+                userMarkers.RemoveAt(i);
+                break;
+            }
+        }
+
+        activeMarkerId = userMarkers.Count > 0 ? userMarkers[userMarkers.Count - 1].Id : -1;
+    }
+
+    private void ClearAllMarkers()
+    {
+        userMarkers.Clear();
+        activeMarkerId = -1;
+        nextMarkerId = 1;
     }
 
     private void ZoomAt(float viewportWidth, float viewportHeight, Vector2 localPoint, float factor)
@@ -718,6 +906,45 @@ public class HideSeekOverlay : MonoBehaviour
             alignment = TextAnchor.MiddleCenter,
             normal = { textColor = Color.white }
         };
+
+        userMarkerOutlineStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 31,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
+
+        userMarkerStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 23,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = Color.white }
+        };
+
+        userMarkerLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = new Color(1f, 0.84f, 0.38f, 1f) }
+        };
+
+        markerPanelTitleStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = new Color(1f, 0.76f, 0.18f, 1f) }
+        };
+
+        markerPanelValueStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 12,
+            alignment = TextAnchor.MiddleLeft,
+            normal = { textColor = new Color(0.9f, 0.93f, 0.97f) }
+        };
     }
 
     public void OnDestroy()
@@ -730,6 +957,12 @@ public class HideSeekOverlay : MonoBehaviour
             UnityEngine.Object.Destroy(mapTexture);
             mapTexture = null;
         }
+    }
+
+    private enum MapTool
+    {
+        Pan,
+        Marker
     }
 
     private sealed class MapFeature
@@ -745,6 +978,20 @@ public class HideSeekOverlay : MonoBehaviour
             X = x;
             Y = y;
             Color = color;
+        }
+    }
+
+    private sealed class UserMarker
+    {
+        public readonly int Id;
+        public readonly float X;
+        public readonly float Y;
+
+        public UserMarker(int id, float x, float y)
+        {
+            Id = id;
+            X = x;
+            Y = y;
         }
     }
 }
