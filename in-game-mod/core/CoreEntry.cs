@@ -15,7 +15,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.16 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.17 configured.");
     }
 }
 
@@ -75,6 +75,8 @@ public class HideSeekOverlay : MonoBehaviour
     private CursorLockMode previousCursorLock;
 
     private Texture2D mapTexture;
+    private Texture2D constraintMaskTexture;
+    private bool constraintMaskDirty = true;
     private bool mapLoadAttempted;
     private string mapLoadError = string.Empty;
 
@@ -109,6 +111,7 @@ public class HideSeekOverlay : MonoBehaviour
     private float questionCooldownUntil;
     private bool questionTestOverride;
     private readonly List<string> questionHistory = new List<string>();
+    private readonly List<MapConstraint> constraints = new List<MapConstraint>();
 
     private bool centerlineVertical;
     private int centerlineAnswerIndex;
@@ -140,6 +143,7 @@ public class HideSeekOverlay : MonoBehaviour
     private GUIStyle metricValueStyle;
     private GUIStyle emptyStateStyle;
     private GUIStyle bigNumberStyle;
+    private GUIStyle timerStatusStyle;
     private GUIStyle objectiveTitleStyle;
     private GUIStyle objectiveEyebrowStyle;
     private GUIStyle mapMessageStyle;
@@ -229,6 +233,8 @@ public class HideSeekOverlay : MonoBehaviour
         seekerPointsSpent = 0;
         questionCooldownUntil = 0f;
         questionHistory.Clear();
+        constraints.Clear();
+        constraintMaskDirty = true;
         missionActive = false;
         missionCompleted = false;
         missionReady = false;
@@ -453,7 +459,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.16", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.17", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
@@ -510,7 +516,7 @@ public class HideSeekOverlay : MonoBehaviour
         string time = FormatTime(matchElapsedSeconds);
         Rect timerRect = new Rect(rightEdge - 236f, 5f, 74f, 27f);
         GUI.Label(timerRect, time, bigNumberStyle);
-        GUI.Label(new Rect(timerRect.x, 31f, 74f, 16f), matchRunning ? "RUNNING" : (matchElapsedSeconds > 0f ? "PAUSED" : "NOT STARTED"), versionStyle);
+        GUI.Label(new Rect(timerRect.x - 12f, 29f, 86f, 22f), matchRunning ? "RUNNING" : (matchElapsedSeconds > 0f ? "PAUSED" : "NOT STARTED"), timerStatusStyle);
 
         float x = rightEdge - 154f;
         Color oldBackground = GUI.backgroundColor;
@@ -569,6 +575,7 @@ public class HideSeekOverlay : MonoBehaviour
         GUI.BeginGroup(viewport);
 
         GUI.DrawTexture(mapRect, mapTexture, ScaleMode.StretchToFill, false);
+        DrawConstraintMask(mapRect);
 
         if (showGrid)
             DrawGrid(mapRect);
@@ -882,7 +889,8 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
         if (GUI.Button(new Rect(card.x + 12f, card.y + 101f, card.width - 24f, 31f), "APPLY ANSWER", compactButtonStyle))
-            ApplyQuestion(cost, $"Centerline {line} → {answer}");
+            ApplyQuestion(cost, $"Centerline {line} → {answer}",
+                MapConstraint.Split(centerlineVertical ? 'x' : 'y', centerlineVertical ? 1700f : 3700f, centerlineAnswerIndex == 0));
         GUI.backgroundColor = oldBackground;
         GUI.enabled = true;
     }
@@ -900,7 +908,7 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
         if (GUI.Button(new Rect(card.x + 12f, card.y + 80f, card.width - 24f, 29f), "APPLY ANSWER", compactButtonStyle))
-            ApplyQuestion(cost, $"Nearest tower → {tower.Name}");
+            ApplyQuestion(cost, $"Nearest tower → {tower.Name}", MapConstraint.Nearest(tower.Name));
         GUI.backgroundColor = oldBackground;
         GUI.enabled = true;
     }
@@ -924,7 +932,8 @@ public class HideSeekOverlay : MonoBehaviour
         Color oldBackground = GUI.backgroundColor;
         GUI.backgroundColor = new Color(0.42f, 0.34f, 0.12f, 1f);
         if (GUI.Button(new Rect(card.x + 12f, card.y + 113f, card.width - 24f, 29f), "APPLY ANSWER", compactButtonStyle))
-            ApplyQuestion(cost, $"{tower.Name} tower · {radius}u → {(towerRadiusInside ? "Inside" : "Outside")}");
+            ApplyQuestion(cost, $"{tower.Name} tower · {radius}u → {(towerRadiusInside ? "Inside" : "Outside")}",
+                MapConstraint.Radar(tower.Name, radius, towerRadiusInside));
         GUI.backgroundColor = oldBackground;
         GUI.enabled = true;
     }
@@ -1010,7 +1019,7 @@ public class HideSeekOverlay : MonoBehaviour
         return SeekerPointsBalance() >= cost;
     }
 
-    private void ApplyQuestion(int cost, string description)
+    private void ApplyQuestion(int cost, string description, MapConstraint constraint)
     {
         if (!questionTestOverride)
         {
@@ -1018,6 +1027,12 @@ public class HideSeekOverlay : MonoBehaviour
                 return;
             seekerPointsSpent += cost;
             questionCooldownUntil = matchElapsedSeconds + QuestionCooldownSeconds;
+        }
+
+        if (constraint != null)
+        {
+            constraints.Add(constraint);
+            constraintMaskDirty = true;
         }
 
         questionHistory.Add($"{FormatTime(matchElapsedSeconds)} · {description}");
@@ -1178,7 +1193,7 @@ public class HideSeekOverlay : MonoBehaviour
         Rect build = new Rect(cardX, y, cardWidth, 128f);
         DrawPanelRect(build, CardBackground, BorderColor);
         GUI.Label(new Rect(build.x + 12f, build.y + 7f, build.width - 24f, 20f), "NATIVE MOD", cardHeadingStyle);
-        DrawMetricRow(build, build.y + 33f, "Core", "0.0.16");
+        DrawMetricRow(build, build.y + 33f, "Core", "0.0.17");
         DrawMetricRow(build, build.y + 55f, "Position source", "Unity PlayerCharacter");
         DrawMetricRow(build, build.y + 77f, "Browser bridge", "Not required");
         GUI.Label(new Rect(build.x + 12f, build.y + 101f, build.width - 24f, 20f), "The old live-tracker plugin is only for the website.", emptyStateStyle);
@@ -1353,6 +1368,120 @@ public class HideSeekOverlay : MonoBehaviour
         float px = ((localPoint.x - mapRect.x) / mapRect.width) * mapTexture.width;
         float py = ((localPoint.y - mapRect.y) / mapRect.height) * mapTexture.height;
         return MapPixelToGame(px, py);
+    }
+
+
+    private void DrawConstraintMask(Rect mapRect)
+    {
+        if (constraints.Count == 0 || mapTexture == null)
+            return;
+
+        EnsureConstraintMaskTexture();
+        if (constraintMaskTexture != null)
+            GUI.DrawTexture(mapRect, constraintMaskTexture, ScaleMode.StretchToFill, true);
+    }
+
+    private void EnsureConstraintMaskTexture()
+    {
+        if (!constraintMaskDirty && constraintMaskTexture != null)
+            return;
+        if (mapTexture == null)
+            return;
+
+        if (constraintMaskTexture != null)
+        {
+            UnityEngine.Object.Destroy(constraintMaskTexture);
+            constraintMaskTexture = null;
+        }
+
+        // Match the website's dark eliminated-area mask, but render it into one
+        // cached texture so Unity only draws one overlay per frame.
+        int width = Mathf.Max(1, (mapTexture.width + 3) / 4);
+        int height = Mathf.Max(1, (mapTexture.height + 3) / 4);
+        byte[] pixels = new byte[width * height * 4];
+
+        for (int y = 0; y < height; y++)
+        {
+            float sourceY = ((y + 0.5f) / height) * mapTexture.height;
+            for (int x = 0; x < width; x++)
+            {
+                float sourceX = ((x + 0.5f) / width) * mapTexture.width;
+                Vector2 game = MapPixelToGame(sourceX, sourceY);
+                if (AllowedAt(game.x, game.y))
+                    continue;
+
+                int i = (y * width + x) * 4;
+                // BGRA32 equivalent of rgba(5,7,10,.72).
+                pixels[i + 0] = 10;
+                pixels[i + 1] = 7;
+                pixels[i + 2] = 5;
+                pixels[i + 3] = 184;
+            }
+        }
+
+        constraintMaskTexture = new Texture2D(width, height, TextureFormat.BGRA32, false);
+        constraintMaskTexture.LoadRawTextureData(ToIl2CppByteArray(pixels));
+        constraintMaskTexture.Apply(false, true);
+        constraintMaskTexture.wrapMode = TextureWrapMode.Clamp;
+        constraintMaskTexture.filterMode = FilterMode.Bilinear;
+        constraintMaskDirty = false;
+    }
+
+    private bool AllowedAt(float x, float y)
+    {
+        foreach (MapConstraint constraint in constraints)
+        {
+            if (constraint.Kind == ConstraintKind.Split)
+            {
+                float value = constraint.Axis == 'x' ? x : y;
+                if (constraint.KeepLow)
+                {
+                    if (value > constraint.Value)
+                        return false;
+                }
+                else if (value < constraint.Value)
+                {
+                    return false;
+                }
+            }
+            else if (constraint.Kind == ConstraintKind.NearestTower)
+            {
+                MapFeature nearest = NearestTowerAt(x, y, out _);
+                if (!string.Equals(nearest.Name, constraint.TowerName, StringComparison.Ordinal))
+                    return false;
+            }
+            else if (constraint.Kind == ConstraintKind.TowerRadius)
+            {
+                MapFeature tower = FindTowerByName(constraint.TowerName);
+                if (tower == null)
+                    continue;
+
+                float dx = x - tower.X;
+                float dy = y - tower.Y;
+                float distance = Mathf.Sqrt(dx * dx + dy * dy);
+                if (constraint.KeepInside)
+                {
+                    if (distance > constraint.Radius)
+                        return false;
+                }
+                else if (distance <= constraint.Radius)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    private static MapFeature FindTowerByName(string name)
+    {
+        foreach (MapFeature tower in Towers)
+        {
+            if (string.Equals(tower.Name, name, StringComparison.Ordinal))
+                return tower;
+        }
+        return null;
     }
 
     private void DrawGrid(Rect mapRect)
@@ -1914,6 +2043,14 @@ public class HideSeekOverlay : MonoBehaviour
             normal = { textColor = Color.white }
         };
 
+        timerStatusStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 9,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleRight,
+            normal = { textColor = MutedText }
+        };
+
         objectiveTitleStyle = new GUIStyle(GUI.skin.label)
         {
             fontSize = 23,
@@ -2077,6 +2214,12 @@ public class HideSeekOverlay : MonoBehaviour
             UnityEngine.Object.Destroy(mapTexture);
             mapTexture = null;
         }
+
+        if (constraintMaskTexture != null)
+        {
+            UnityEngine.Object.Destroy(constraintMaskTexture);
+            constraintMaskTexture = null;
+        }
     }
 
     private enum MapTool
@@ -2098,6 +2241,45 @@ public class HideSeekOverlay : MonoBehaviour
     {
         Seeker,
         Hider
+    }
+
+
+    private enum ConstraintKind
+    {
+        Split,
+        NearestTower,
+        TowerRadius
+    }
+
+    private sealed class MapConstraint
+    {
+        public readonly ConstraintKind Kind;
+        public readonly char Axis;
+        public readonly float Value;
+        public readonly bool KeepLow;
+        public readonly string TowerName;
+        public readonly float Radius;
+        public readonly bool KeepInside;
+
+        private MapConstraint(ConstraintKind kind, char axis, float value, bool keepLow, string towerName, float radius, bool keepInside)
+        {
+            Kind = kind;
+            Axis = axis;
+            Value = value;
+            KeepLow = keepLow;
+            TowerName = towerName;
+            Radius = radius;
+            KeepInside = keepInside;
+        }
+
+        public static MapConstraint Split(char axis, float value, bool keepLow) =>
+            new MapConstraint(ConstraintKind.Split, axis, value, keepLow, string.Empty, 0f, false);
+
+        public static MapConstraint Nearest(string towerName) =>
+            new MapConstraint(ConstraintKind.NearestTower, '\0', 0f, false, towerName, 0f, false);
+
+        public static MapConstraint Radar(string towerName, float radius, bool keepInside) =>
+            new MapConstraint(ConstraintKind.TowerRadius, '\0', 0f, false, towerName, radius, keepInside);
     }
 
     private sealed class MapFeature
