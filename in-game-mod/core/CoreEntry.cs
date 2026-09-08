@@ -16,7 +16,7 @@ public static class CoreEntry
     public static void Configure(ManualLogSource logger)
     {
         Logger = logger;
-        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.19 configured.");
+        Logger?.LogInfo("Big Walk Hide + Seek Core 0.0.20 configured.");
     }
 }
 
@@ -78,6 +78,7 @@ public class HideSeekOverlay : MonoBehaviour
     private bool constraintMaskDirty = true;
     private bool mapLoadAttempted;
     private string mapLoadError = string.Empty;
+    private float nextMapLoadAttemptAt;
 
     private Rigidbody playerRb;
     private float nextPlayerSearchAt;
@@ -183,6 +184,12 @@ public class HideSeekOverlay : MonoBehaviour
     {
         EnsureInitialized();
         UpdateMatchTimer();
+
+        // Texture creation/loading belongs in the normal Unity update loop.
+        // 0.0.19 attempted this from OnGUI for the passive mini-map, which can
+        // leave the one-shot loader stuck before the texture becomes usable.
+        if (overlayOpen || settings.MiniMapEnabled)
+            EnsureMapTexture();
 
         bool needsPosition = overlayOpen
             || missionActive
@@ -333,50 +340,79 @@ public class HideSeekOverlay : MonoBehaviour
 
     private void EnsureMapTexture()
     {
-        if (mapTexture != null || mapLoadAttempted)
+        if (mapTexture != null)
             return;
 
+        float now = Time.unscaledTime;
+        if (now < nextMapLoadAttemptAt)
+            return;
+
+        // Never permanently poison map loading after one transient failure.
+        // Retry every few seconds until the embedded texture is available.
+        nextMapLoadAttemptAt = now + 3f;
         mapLoadAttempted = true;
+        mapLoadError = string.Empty;
 
         try
         {
-            Assembly assembly = Assembly.GetExecutingAssembly();
-            using Stream stream = assembly.GetManifestResourceStream(MapResourceName);
+            Assembly assembly = typeof(HideSeekOverlay).Assembly;
+            string resolvedResourceName = MapResourceName;
+            Stream stream = assembly.GetManifestResourceStream(resolvedResourceName);
+
             if (stream == null)
-                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found.");
+            {
+                foreach (string resourceName in assembly.GetManifestResourceNames())
+                {
+                    if (!resourceName.EndsWith("big-walk-map.bgra", StringComparison.OrdinalIgnoreCase))
+                        continue;
 
-            using var memory = new MemoryStream();
-            stream.CopyTo(memory);
-            byte[] packed = memory.ToArray();
+                    resolvedResourceName = resourceName;
+                    stream = assembly.GetManifestResourceStream(resourceName);
+                    if (stream != null)
+                        break;
+                }
+            }
 
-            if (packed.Length < 8)
-                throw new InvalidDataException("Embedded raw map resource is too short.");
+            if (stream == null)
+                throw new FileNotFoundException($"Embedded raw map resource '{MapResourceName}' was not found in Core 0.0.20.");
 
-            int width = BitConverter.ToInt32(packed, 0);
-            int height = BitConverter.ToInt32(packed, 4);
-            if (width <= 0 || height <= 0)
-                throw new InvalidDataException($"Embedded raw map has invalid dimensions: {width}x{height}.");
+            using (stream)
+            using (var memory = new MemoryStream())
+            {
+                stream.CopyTo(memory);
+                byte[] packed = memory.ToArray();
 
-            long expectedPixelBytes = (long)width * height * 4L;
-            if (expectedPixelBytes > int.MaxValue || packed.Length != 8 + expectedPixelBytes)
-                throw new InvalidDataException($"Embedded raw map size mismatch. Expected {expectedPixelBytes} pixel bytes, got {packed.Length - 8}.");
+                if (packed.Length < 8)
+                    throw new InvalidDataException("Embedded raw map resource is too short.");
 
-            byte[] pixelBytes = new byte[(int)expectedPixelBytes];
-            Buffer.BlockCopy(packed, 8, pixelBytes, 0, pixelBytes.Length);
+                int width = BitConverter.ToInt32(packed, 0);
+                int height = BitConverter.ToInt32(packed, 4);
+                if (width <= 0 || height <= 0)
+                    throw new InvalidDataException($"Embedded raw map has invalid dimensions: {width}x{height}.");
 
-            mapTexture = new Texture2D(width, height, TextureFormat.BGRA32, false);
-            Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pixelBytes);
-            mapTexture.LoadRawTextureData(il2cppBytes);
-            mapTexture.Apply(false, true);
-            mapTexture.wrapMode = TextureWrapMode.Clamp;
-            mapTexture.filterMode = FilterMode.Bilinear;
+                long expectedPixelBytes = (long)width * height * 4L;
+                if (expectedPixelBytes > int.MaxValue || packed.Length != 8 + expectedPixelBytes)
+                    throw new InvalidDataException($"Embedded raw map size mismatch. Expected {expectedPixelBytes} pixel bytes, got {packed.Length - 8}.");
 
-            CoreEntry.Logger?.LogInfo($"Embedded Big Walk map loaded from raw BGRA: {mapTexture.width}x{mapTexture.height}.");
+                byte[] pixelBytes = new byte[(int)expectedPixelBytes];
+                Buffer.BlockCopy(packed, 8, pixelBytes, 0, pixelBytes.Length);
+
+                mapTexture = new Texture2D(width, height, TextureFormat.BGRA32, false);
+                Il2CppStructArray<byte> il2cppBytes = ToIl2CppByteArray(pixelBytes);
+                mapTexture.LoadRawTextureData(il2cppBytes);
+                mapTexture.Apply(false, true);
+                mapTexture.wrapMode = TextureWrapMode.Clamp;
+                mapTexture.filterMode = FilterMode.Bilinear;
+            }
+
+            mapLoadError = string.Empty;
+            nextMapLoadAttemptAt = float.PositiveInfinity;
+            CoreEntry.Logger?.LogInfo($"Embedded Big Walk map loaded from '{resolvedResourceName}': {mapTexture.width}x{mapTexture.height}.");
         }
         catch (Exception ex)
         {
             mapLoadError = ex.Message;
-            CoreEntry.Logger?.LogError($"Could not load embedded Big Walk map: {ex}");
+            CoreEntry.Logger?.LogError($"Could not load embedded Big Walk map; retrying in 3 seconds: {ex}");
             if (mapTexture != null)
             {
                 UnityEngine.Object.Destroy(mapTexture);
@@ -485,19 +521,13 @@ public class HideSeekOverlay : MonoBehaviour
         if (!overlayOpen)
         {
             if (settings.MiniMapEnabled || settings.NavHudEnabled || (settings.MissionHudEnabled && missionActive))
-            {
-                if (settings.MiniMapEnabled)
-                    EnsureMapTexture();
                 DrawPassiveHud();
-            }
 
             DrawNotifications();
             GUI.color = oldColor;
             GUI.backgroundColor = oldBackground;
             return;
         }
-
-        EnsureMapTexture();
 
         GUI.color = PageBackground;
         GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
@@ -524,8 +554,13 @@ public class HideSeekOverlay : MonoBehaviour
         float mapX = Screen.width - PassiveHudMargin - MiniMapWidth;
         Rect miniMapRect = new Rect(mapX, PassiveHudMargin, MiniMapWidth, MiniMapHeight);
 
-        if (settings.MiniMapEnabled && mapTexture != null)
-            DrawMiniMap(miniMapRect);
+        if (settings.MiniMapEnabled)
+        {
+            if (mapTexture != null)
+                DrawMiniMap(miniMapRect);
+            else
+                DrawMiniMapPlaceholder(miniMapRect);
+        }
 
         if (settings.NavHudEnabled)
         {
@@ -533,6 +568,19 @@ public class HideSeekOverlay : MonoBehaviour
                 ? miniMapRect.x - 8f - NavHudWidth
                 : Screen.width - PassiveHudMargin - NavHudWidth;
             DrawNavHud(new Rect(navX, PassiveHudMargin, NavHudWidth, MiniMapHeight));
+        }
+    }
+
+    private void DrawMiniMapPlaceholder(Rect rect)
+    {
+        DrawPanelRect(rect, new Color(0.045f, 0.055f, 0.07f, 0.94f), BorderColor);
+        string title = mapLoadAttempted ? "MAP RETRYING…" : "MAP LOADING…";
+        GUI.Label(new Rect(rect.x + 8f, rect.y + 49f, rect.width - 16f, 24f), title, statusStyle);
+
+        if (!string.IsNullOrEmpty(mapLoadError))
+        {
+            GUI.Label(new Rect(rect.x + 10f, rect.y + 78f, rect.width - 20f, 58f),
+                mapLoadError, emptyStateStyle);
         }
     }
 
@@ -643,7 +691,7 @@ public class HideSeekOverlay : MonoBehaviour
         DrawSolidRect(new Rect(0f, TopBarHeight - 1f, Screen.width, 1f), BorderColor);
 
         GUI.Label(new Rect(14f, 8f, 130f, 22f), "BIG WALK H+S", brandStyle);
-        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.19", versionStyle);
+        GUI.Label(new Rect(15f, 31f, 130f, 16f), "CORE v0.0.20", versionStyle);
 
         float tabX = 150f;
         DrawTopTab(ref tabX, "GAME", UiTab.Game, 64f);
@@ -727,7 +775,7 @@ public class HideSeekOverlay : MonoBehaviour
         {
             string message = string.IsNullOrEmpty(mapLoadError)
                 ? "Loading Big Walk map…"
-                : $"Map failed to load\n{mapLoadError}";
+                : $"Map load retrying…\n{mapLoadError}";
             GUI.Label(new Rect(0f, TopBarHeight, Screen.width, Screen.height - TopBarHeight), message, mapMessageStyle);
             return;
         }
