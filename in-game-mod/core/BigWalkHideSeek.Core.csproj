@@ -44,6 +44,9 @@
     <Reference Include="UnityEngine.PhysicsModule">
       <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.PhysicsModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>$(ProfilePath)\BepInEx\interop\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <Target Name="PrepareBigWalkMapAsset" BeforeTargets="PrepareForBuild">
